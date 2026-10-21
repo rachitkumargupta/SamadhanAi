@@ -60,7 +60,7 @@ The Independent Reviewer is a logical application role. For a real deployment it
 **Preconditions:** A complaint is registered and permitted context is available.<br>
 **Main flow:** Complaint Analyst analyzes the required image and optional text, returning a grounded description, visible evidence, category and priority/severity recommendations, uncertainty, missing information, possible multi-department involvement, and review flags. Backend validates output and presents it to authorized staff.<br>
 **Alternate flows:** Unusable image, malformed/uncertain result, conflicting location/text, or provider outage leaves the complaint persisted and routes to retry or manual review. Duplicate detection is outside MVP.<br>
-**Open decisions:** Category taxonomy, priority/severity definitions, confidence thresholds, provider/data handling, and review ownership.
+**Open decisions:** Municipal approval of the candidate taxonomy, official priority/severity definitions and thresholds, calibrated confidence/acceptance criteria, provider/data handling, and review ownership. A provisional engineering taxonomy, evidence-scored priority rubric, categorical self-assessed confidence, and safe review triggers are implemented in the [Complaint Analyst MVP framework](../architecture/complaint-analysis-mvp-policy.md); they are not official policy.
 
 ### UC-05 — Route and assign a complaint
 

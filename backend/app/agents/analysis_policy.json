@@ -1,0 +1,57 @@
+{
+  "policy_id": "samadhan_complaint_analyst_mvp",
+  "version": "1.0-provisional",
+  "approval_status": "provisional_engineering_default_not_municipal_policy",
+  "fallback_category": "other_uncertain",
+  "taxonomy": {
+    "roads_potholes": "Visible damage, obstruction, or defect affecting a road, footpath, curb, or related public surface.",
+    "garbage_sanitation": "Visible litter, unmanaged waste, overflowing public bins, or sanitation concerns.",
+    "drainage_sewage": "Visible blocked drains, standing water, sewage overflow, or drainage infrastructure concerns.",
+    "water_leakage": "Visible leaking pipes, water wastage, or damage to public water infrastructure.",
+    "streetlights_electrical": "Visible streetlight outage or damage to public electrical infrastructure.",
+    "damaged_public_infrastructure": "Visible damage to public infrastructure not better represented by another category.",
+    "other_uncertain": "The issue is outside the configured categories or the available evidence is insufficient to classify it reliably."
+  },
+  "priority": {
+    "potential_hazard_terms": [
+      "exposed wire",
+      "live wire",
+      "sparking wire",
+      "electric shock",
+      "gas leak",
+      "fire",
+      "smoke",
+      "open manhole",
+      "open drain",
+      "structural collapse",
+      "collapsed structure",
+      "flooded road",
+      "fall hazard"
+    ],
+    "criteria": {
+      "routine_localized_issue": {
+        "points": 0,
+        "description": "A localized visible maintenance issue without supported service, access, or potential-safety impact."
+      },
+      "service_disruption": {
+        "points": 1,
+        "description": "Visible evidence supports disruption to a public service or normal use of public infrastructure."
+      },
+      "public_access_obstructed": {
+        "points": 2,
+        "description": "Visible evidence supports obstruction or material restriction of public access."
+      },
+      "potential_safety_hazard": {
+        "points": 3,
+        "description": "Visible evidence suggests a possible public-safety hazard; this is a review flag, not an emergency finding."
+      }
+    },
+    "thresholds": {
+      "low_max": 0,
+      "medium_max": 1,
+      "high_min": 2
+    },
+    "automatic_critical": false,
+    "human_review_criteria": ["potential_safety_hazard"]
+  }
+}

@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, Query, Request, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from backend.app.database import get_session
 from backend.app.schemas import (
     ComplaintAnalysisStatusRead,
+    ComplaintAnalysisReviewItem,
+    ComplaintAnalysisReviewPage,
     ComplaintEventPage,
     ComplaintEventRead,
     ComplaintListPage,
@@ -15,12 +17,14 @@ from backend.app.agents.complaint_analyst import (
     AnalystInputError,
     normalize_image,
 )
-from backend.app.security import Actor, get_current_citizen
+from backend.app.security import Actor, get_current_analyst_reviewer, get_current_citizen
 from backend.app.storage import PrivateLocalMediaStore
 from backend.app.services import (
     get_complaint_analysis,
+    get_complaint_media,
     get_owned_complaint,
     list_citizen_visible_events,
+    list_analysis_review_items,
     list_owned_complaints,
     media_object_is_referenced,
     submit_complaint_with_image,
@@ -29,6 +33,62 @@ from backend.app.config import get_settings
 
 
 router = APIRouter(prefix="/api/v1/complaints", tags=["complaints"])
+staff_router = APIRouter(prefix="/api/v1/staff/complaint-analysis", tags=["complaint-analysis-review"])
+
+
+@staff_router.get("/reviews", response_model=ComplaintAnalysisReviewPage)
+def read_analysis_review_queue(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=10_000),
+    session: Session = Depends(get_session),
+    actor: Actor = Depends(get_current_analyst_reviewer),
+) -> ComplaintAnalysisReviewPage:
+    rows, has_more = list_analysis_review_items(session, offset=offset, limit=limit)
+    return ComplaintAnalysisReviewPage(
+        items=[
+            ComplaintAnalysisReviewItem(
+                public_reference=complaint.public_reference,
+                description=complaint.description,
+                location_text=complaint.location_text,
+                submitted_at=complaint.created_at,
+                analysis_status=job.status,
+                image_url=f"/api/v1/staff/complaint-analysis/reviews/{complaint.public_reference}/image",
+                result=analysis.result if analysis is not None else None,
+            )
+            for complaint, job, analysis in rows
+        ],
+        limit=limit,
+        offset=offset,
+        next_offset=offset + limit if has_more else None,
+    )
+
+
+@staff_router.get("/reviews/{public_reference}/image")
+def read_analysis_review_image(
+    public_reference: str = Path(max_length=32),
+    session: Session = Depends(get_session),
+    actor: Actor = Depends(get_current_analyst_reviewer),
+) -> Response:
+    media = get_complaint_media(session, public_reference=public_reference)
+    if media is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Review evidence was not found."},
+        )
+    try:
+        image_bytes = PrivateLocalMediaStore(get_settings().complaint_media_storage_dir).read_image(
+            media.object_key
+        )
+    except (OSError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Review evidence was not found."},
+        ) from None
+    return Response(
+        content=image_bytes,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    )
 
 
 def _read_upload_bounded(upload: UploadFile) -> bytes:
