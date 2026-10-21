@@ -7,3 +7,5 @@ psycopg[binary]>=3.2,<4.0
 PyJWT>=2.10,<3.0
 pydantic-settings>=2.7,<3.0
 python-dotenv>=1.0,<2.0
+openai>=1.100,<3.0
+Pillow>=11.0,<13.0

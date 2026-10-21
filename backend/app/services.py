@@ -22,6 +22,7 @@ def submit_complaint(
     *,
     actor_subject: str,
     payload: ComplaintCreate,
+    correlation_id: str,
 ) -> Complaint:
     complaint = Complaint(
         public_reference=new_public_reference(),
@@ -39,6 +40,7 @@ def submit_complaint(
             actor_subject=actor_subject,
             previous_state=None,
             resulting_state=ComplaintState.SUBMITTED.value,
+            correlation_id=correlation_id,
             visibility="citizen",
         )
     )
@@ -100,6 +102,7 @@ def transition_complaint(
     public_reference: str,
     context: TransitionContext,
     target_state: str,
+    correlation_id: str | None = None,
     citizen_visible: bool = False,
 ) -> Complaint | None:
     """Apply a candidate transition and its audit event in one transaction.
@@ -129,6 +132,7 @@ def transition_complaint(
                 previous_state=previous_state,
                 resulting_state=next_state.value,
                 reason=context.reason,
+                correlation_id=correlation_id,
                 visibility="citizen" if citizen_visible else "internal",
             )
         )
