@@ -1,7 +1,7 @@
 # Backend architecture proposal
 
 **Status:** Target module boundaries aligned to the supplied blueprint; policy/operations details remain open.<br>
-**Implementation state:** The backend is a partial authenticated complaint intake/tracking slice with required image upload, private local media storage, a PostgreSQL-backed analysis job, and a Complaint Analyst worker. Parent/child work, approved deterministic priority/safety policy, routing, SLA worker, notifications, staff APIs, and citizen verification are not implemented. See [backend README](../../backend/README.md).
+**Implementation state:** The backend is a partial authenticated complaint intake/tracking slice with required image upload, private local media storage, a PostgreSQL-backed analysis job, a Complaint Analyst worker, a capability-protected read-only analysis review queue, and a configurable provisional MVP taxonomy/priority framework. Municipal policy approval, review assignment/dispositions/retries, production media controls, routing, SLA worker, notifications, broader staff APIs, and citizen verification remain open. See [backend README](../../backend/README.md).
 
 ## 1. Design goals
 

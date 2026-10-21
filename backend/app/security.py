@@ -46,3 +46,46 @@ def get_current_citizen(
     if not isinstance(subject, str) or not subject.strip() or role != "citizen":
         raise unauthorized
     return Actor(subject=subject, role=role)
+
+
+def get_current_analyst_reviewer(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    settings: Settings = Depends(get_settings),
+) -> Actor:
+    """Require an explicit reviewer capability from the trusted JWT issuer.
+
+    The project must grant this capability only to staff authorized for the
+    review queue. It deliberately does not infer reviewer access from a citizen
+    token or from a broad administrator role.
+    """
+    unauthorized = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail={"code": "authentication_required", "message": "A valid staff token is required."},
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    if credentials is None:
+        raise unauthorized
+
+    try:
+        claims = jwt.decode(
+            credentials.credentials,
+            settings.jwt_secret.get_secret_value(),
+            algorithms=["HS256"],
+            issuer=settings.jwt_issuer,
+            audience=settings.jwt_audience,
+            options={"require": ["sub", "iss", "aud", "exp"]},
+        )
+    except InvalidTokenError:
+        raise unauthorized from None
+
+    subject = claims.get("sub")
+    role = claims.get("role")
+    permissions = claims.get("permissions", [])
+    if not isinstance(subject, str) or not subject.strip() or role == "citizen":
+        raise unauthorized
+    if not isinstance(permissions, list) or "complaint_analysis:review" not in permissions:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "review_permission_required", "message": "Complaint analysis review access is required."},
+        )
+    return Actor(subject=subject, role=role if isinstance(role, str) else "staff")

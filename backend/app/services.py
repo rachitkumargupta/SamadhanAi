@@ -2,7 +2,7 @@ import hashlib
 import secrets
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from backend.app.domain.lifecycle import (
@@ -150,6 +150,45 @@ def media_object_is_referenced(session: Session, *, object_key: str) -> bool:
     return session.scalar(
         select(ComplaintMedia.id).where(ComplaintMedia.object_key == object_key)
     ) is not None
+
+
+def list_analysis_review_items(
+    session: Session, *, offset: int, limit: int
+) -> tuple[list[tuple[Complaint, BackgroundJob, ComplaintAnalysis | None]], bool]:
+    needs_human_review = ComplaintAnalysis.result["human_review_recommended"].as_boolean().is_(True)
+    statement = (
+        select(Complaint, BackgroundJob, ComplaintAnalysis)
+        .join(BackgroundJob, BackgroundJob.complaint_id == Complaint.id)
+        .outerjoin(ComplaintAnalysis, ComplaintAnalysis.complaint_id == Complaint.id)
+        .where(
+            BackgroundJob.work_type == "complaint_analysis",
+            or_(BackgroundJob.status == "failed", needs_human_review),
+        )
+        .order_by(Complaint.created_at.asc(), Complaint.id.asc())
+        .offset(offset)
+        .limit(limit + 1)
+    )
+    rows = list(session.execute(statement).all())
+    has_more = len(rows) > limit
+    return rows[:limit], has_more
+
+
+def get_complaint_media(session: Session, *, public_reference: str) -> ComplaintMedia | None:
+    needs_human_review = ComplaintAnalysis.result["human_review_recommended"].as_boolean().is_(True)
+    statement = (
+        select(ComplaintMedia)
+        .join(Complaint, Complaint.id == ComplaintMedia.complaint_id)
+        .join(BackgroundJob, BackgroundJob.complaint_id == Complaint.id)
+        .outerjoin(ComplaintAnalysis, ComplaintAnalysis.complaint_id == Complaint.id)
+        .where(
+            Complaint.public_reference == public_reference,
+            ComplaintMedia.purpose == "complaint_image_normalized",
+            BackgroundJob.work_type == "complaint_analysis",
+            or_(BackgroundJob.status == "failed", needs_human_review),
+        )
+        .order_by(ComplaintMedia.created_at.desc())
+    )
+    return session.scalars(statement).first()
 
 
 def list_owned_complaints(

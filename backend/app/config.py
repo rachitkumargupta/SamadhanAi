@@ -13,10 +13,8 @@ class Settings(BaseSettings):
     openai_api_key: SecretStr | None = None
     complaint_analyst_model: str = "gpt-6-luna"
     complaint_analyst_timeout_seconds: float = Field(default=30.0, gt=0, le=120)
-    complaint_analyst_categories: str = (
-        "roads_potholes,garbage_sanitation,drainage_sewage,water_leakage,"
-        "streetlights_electrical,damaged_public_infrastructure,other_uncertain"
-    )
+    complaint_analyst_categories: str | None = None
+    complaint_analyst_policy_file: str | None = None
     complaint_media_storage_dir: str = "./private_media"
     complaint_analysis_worker_poll_seconds: float = Field(default=2.0, gt=0, le=60)
 

@@ -70,3 +70,20 @@ class ComplaintAnalysisStatusRead(BaseModel):
     result: ComplaintAnalysis | None = None
     human_review_required: bool
     message: str | None = None
+
+
+class ComplaintAnalysisReviewItem(BaseModel):
+    public_reference: str
+    description: str | None
+    location_text: str | None
+    submitted_at: datetime
+    analysis_status: str
+    image_url: str
+    result: ComplaintAnalysis | None = None
+
+
+class ComplaintAnalysisReviewPage(BaseModel):
+    items: list[ComplaintAnalysisReviewItem]
+    limit: int
+    offset: int
+    next_offset: int | None
