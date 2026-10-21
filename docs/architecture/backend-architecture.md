@@ -1,7 +1,7 @@
 # Backend architecture proposal
 
 **Status:** Target module boundaries aligned to the supplied blueprint; policy/operations details remain open.<br>
-**Implementation state:** The backend is a partial text-based citizen intake/tracking slice. Required image intake, async analysis, parent/child work, SLA worker, notifications, staff APIs, and verification are not implemented. See [backend README](../../backend/README.md).
+**Implementation state:** The backend is a partial authenticated complaint intake/tracking slice with required image upload, private local media storage, a PostgreSQL-backed analysis job, and a Complaint Analyst worker. Parent/child work, approved deterministic priority/safety policy, routing, SLA worker, notifications, staff APIs, and citizen verification are not implemented. See [backend README](../../backend/README.md).
 
 ## 1. Design goals
 

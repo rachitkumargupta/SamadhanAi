@@ -4,10 +4,18 @@ from fastapi import FastAPI
 from fastapi import Request
 
 from backend.app.errors import install_error_handlers
+from backend.app.middleware import RequestBodyLimitMiddleware
 from backend.app.routes import router as complaints_router
+from backend.app.agents.complaint_analyst import MAX_IMAGE_BYTES
 
 
 app = FastAPI(title="Samadhan AI API", version="0.1.0")
+app.add_middleware(
+    RequestBodyLimitMiddleware,
+    path="/api/v1/complaints",
+    method="POST",
+    maximum_bytes=MAX_IMAGE_BYTES + 256_000,
+)
 app.include_router(complaints_router)
 install_error_handlers(app)
 
