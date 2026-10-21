@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,6 +10,13 @@ class Settings(BaseSettings):
     jwt_secret: SecretStr
     jwt_issuer: str
     jwt_audience: str
+    openai_api_key: SecretStr | None = None
+    complaint_analyst_model: str = "gpt-6-luna"
+    complaint_analyst_timeout_seconds: float = Field(default=30.0, gt=0, le=120)
+    complaint_analyst_categories: str = (
+        "roads_potholes,garbage_sanitation,drainage_sewage,water_leakage,"
+        "streetlights_electrical,damaged_public_infrastructure,other_uncertain"
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
