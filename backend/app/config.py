@@ -17,6 +17,8 @@ class Settings(BaseSettings):
         "roads_potholes,garbage_sanitation,drainage_sewage,water_leakage,"
         "streetlights_electrical,damaged_public_infrastructure,other_uncertain"
     )
+    complaint_media_storage_dir: str = "./private_media"
+    complaint_analysis_worker_poll_seconds: float = Field(default=2.0, gt=0, le=60)
 
     model_config = SettingsConfigDict(
         env_file=".env",

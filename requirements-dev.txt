@@ -1,0 +1,3 @@
+-r requirements.txt
+# Required by Starlette's TestClient in the workspace's supported FastAPI version.
+httpx2>=2.0,<3.0

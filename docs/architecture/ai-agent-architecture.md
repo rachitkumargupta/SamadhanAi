@@ -1,6 +1,6 @@
 # AI agent architecture and contracts
 
-**Status:** Target architecture from the supplied blueprint. Complaint Analyst core contract/provider adapter implemented; workflow orchestration and durable agent execution are not. Exactly three core agents are planned.<br>
+**Status:** Target architecture from the supplied blueprint. Complaint Analyst intake, core, durable job execution, and result persistence are implemented as a first vertical slice. Production policy/provider approvals and the other two agents remain open.<br>
 **Related:** [Master implementation blueprint](implementation-blueprint.md)
 
 ## 1. Design rules
@@ -54,7 +54,7 @@ Do not accept free-form prose as the sole machine-readable decision. The final s
 **Forbidden actions:** edit complaint, request information directly, contact citizen, reject/merge/close, assign work, or claim facts absent from input. Duplicate detection is outside MVP.<br>
 **Human review:** required for unclear/unsafe images, uncertain classification, conflicting context, high-impact issue, or policy-defined cases.
 
-**Implementation status:** `backend/app/agents/complaint_analyst.py` implements a typed proposal contract, image decode/normalization, candidate category validation, and an OpenAI Responses provider adapter. It is not yet called from an API or durable worker because the current backend does not persist uploaded media or analysis jobs. Its provider integration and assumptions are documented in [Complaint Analyst integration contract](complaint-analyst-integration.md). No other agent is implemented.
+**Implementation status:** `backend/app/agents/complaint_analyst.py` implements the typed proposal contract, image decode/normalization, candidate category validation, and an OpenAI Responses development adapter. Authenticated multipart intake persists a private normalized image and a durable analysis job; a worker claims jobs, records attempts, and persists proposals; an owner-scoped API exposes status/results. The provider adapter and development-storage assumptions are documented in [Complaint Analyst integration contract](complaint-analyst-integration.md). Deterministic priority/safety rules, production media controls, and the other agents are not implemented.
 
 ### Agent 2 — Resolution and Routing Agent
 

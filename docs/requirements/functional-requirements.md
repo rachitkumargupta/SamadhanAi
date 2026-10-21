@@ -6,6 +6,8 @@
 
 These requirements describe intended behavior and are not evidence of implementation. **Must** means required for the first end-to-end MVP. Blueprint-mandated behavior (including required image intake, exactly three core agents, the 48-hour citizen decision window, reminder with the complaint kept pending after no response, and no closure by silence) is the baseline; changing it requires an explicit approved specification change. Policy-specific values and operational details remain subject to approval. **Should** can follow the core workflow; **TBD** means priority depends on a team/policy decision.
 
+**First-agent implementation status:** The backend now has authenticated image intake, normalized private local storage, a durable Complaint Analyst job, a worker, stored proposals/run records, and an owner-scoped status endpoint. The local filesystem store is an implementation adapter, not an approved production media service. Deterministic priority/safety thresholds and provider data terms remain unresolved; those gates must be cleared before real-citizen operation.
+
 ## 1. Identity and access control
 
 | ID | Priority | Requirement | Acceptance criteria | Use cases |

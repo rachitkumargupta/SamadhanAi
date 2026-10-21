@@ -1,3 +1,4 @@
+import hashlib
 import secrets
 from uuid import UUID
 
@@ -9,7 +10,13 @@ from backend.app.domain.lifecycle import (
     TransitionContext,
     validate_transition,
 )
-from backend.app.models import Complaint, ComplaintEvent
+from backend.app.models import (
+    BackgroundJob,
+    Complaint,
+    ComplaintAnalysis,
+    ComplaintEvent,
+    ComplaintMedia,
+)
 from backend.app.schemas import ComplaintCreate
 
 
@@ -49,6 +56,67 @@ def submit_complaint(
     return complaint
 
 
+def submit_complaint_with_image(
+    session: Session,
+    *,
+    actor_subject: str,
+    description: str | None,
+    location_text: str | None,
+    correlation_id: str,
+    object_key: str,
+    normalized_image: bytes,
+) -> tuple[Complaint, BackgroundJob]:
+    """Atomically persist complaint, private-media reference, event, and job intent."""
+    complaint = Complaint(
+        public_reference=new_public_reference(),
+        owner_subject=actor_subject,
+        description=description,
+        location_text=location_text,
+        status=ComplaintState.SUBMITTED.value,
+    )
+    session.add(complaint)
+    try:
+        session.flush()
+        media = ComplaintMedia(
+            complaint_id=complaint.id,
+            object_key=object_key,
+            media_type="image/jpeg",
+            purpose="complaint_image_normalized",
+            size_bytes=len(normalized_image),
+            sha256=hashlib.sha256(normalized_image).hexdigest(),
+            uploaded_by=actor_subject,
+        )
+        session.add(media)
+        session.flush()
+        session.add(
+            ComplaintEvent(
+                complaint_id=complaint.id,
+                event_type="complaint_registered",
+                actor_subject=actor_subject,
+                previous_state=None,
+                resulting_state=ComplaintState.SUBMITTED.value,
+                correlation_id=correlation_id,
+                visibility="citizen",
+            )
+        )
+        job = BackgroundJob(
+            complaint_id=complaint.id,
+            media_id=media.id,
+            work_type="complaint_analysis",
+            idempotency_key=f"complaint_analysis:{complaint.id}",
+            status="pending",
+            max_attempts=3,
+        )
+        session.add(job)
+        session.commit()
+        session.refresh(complaint)
+        session.refresh(job)
+    except Exception:
+        session.rollback()
+        raise
+    return complaint, job
+
+
 def get_owned_complaint(
     session: Session, *, public_reference: str, actor_subject: str
 ) -> Complaint | None:
@@ -57,6 +125,31 @@ def get_owned_complaint(
         Complaint.owner_subject == actor_subject,
     )
     return session.scalar(statement)
+
+
+def get_complaint_analysis(
+    session: Session, *, complaint_id: UUID
+) -> tuple[BackgroundJob | None, ComplaintAnalysis | None]:
+    job = session.scalar(
+        select(BackgroundJob)
+        .where(
+            BackgroundJob.complaint_id == complaint_id,
+            BackgroundJob.work_type == "complaint_analysis",
+        )
+        .order_by(BackgroundJob.created_at.desc())
+    )
+    analysis = session.scalar(
+        select(ComplaintAnalysis)
+        .where(ComplaintAnalysis.complaint_id == complaint_id)
+        .order_by(ComplaintAnalysis.created_at.desc())
+    )
+    return job, analysis
+
+
+def media_object_is_referenced(session: Session, *, object_key: str) -> bool:
+    return session.scalar(
+        select(ComplaintMedia.id).where(ComplaintMedia.object_key == object_key)
+    ) is not None
 
 
 def list_owned_complaints(

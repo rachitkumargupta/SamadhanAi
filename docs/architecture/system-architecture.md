@@ -1,7 +1,7 @@
 # Samadhan AI system architecture
 
 **Status:** Target architecture aligned to the supplied blueprint; not an as-built diagram.<br>
-**Implementation status:** Only a preliminary text-based citizen intake/tracking slice exists. See [backend README](../../backend/README.md).<br>
+**Implementation status:** The backend includes authenticated image-first intake and asynchronous Complaint Analyst processing with local private storage and durable database jobs. Other target workflows remain unimplemented. See [backend README](../../backend/README.md).<br>
 **Master reference:** [Implementation blueprint](implementation-blueprint.md)
 
 ## Architecture principle
