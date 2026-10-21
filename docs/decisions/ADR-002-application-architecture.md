@@ -6,11 +6,11 @@
 
 ## Context
 
-The target architecture describes eight logical layers and three agents. MVP scope requires an understandable, auditable end-to-end lifecycle. There is no existing code or deployment topology to extend, and current workload/integration requirements are unknown.
+The supplied complete blueprint defines eight logical layers, exactly three agents, image-first intake, asynchronous analysis, parent/child departmental tickets, and deterministic scheduled SLA processing. An initial backend slice exists, so implementation must extend and preserve it rather than assume an empty repository. The deployment platform and workload limits still require validation.
 
 ## Proposal
 
-Begin with a modular monolith: one backend deployment containing API/security, application/domain services, persistence, AI orchestration/harness interfaces, and provider adapters. Use a transactional relational database if approved. Keep agent calls and external side effects behind interfaces; enforce authorization and lifecycle rules in application/domain code. Introduce background execution or separate services only when measured reliability, scaling, isolation, or team ownership requirements justify them.
+Use a modular monolith: FastAPI API/security, application/domain services, PostgreSQL persistence, the shared harness for exactly three agents, provider adapters, and a scheduled worker for durable jobs/SLA processing. Persist complaint/media references/events and durable analysis work before model calls. Parent-child tickets have independent assignments, state, evidence, and SLA. Keep agent calls/external effects behind interfaces; enforce authorization, state, deadlines and writes in application/domain code. Do not split into separate services without measured need.
 
 ## Alternatives considered
 
@@ -20,4 +20,4 @@ Begin with a modular monolith: one backend deployment containing API/security, a
 
 ## Consequences
 
-One deployable simplifies local development and lifecycle transactions; internal module boundaries and interface tests are important to avoid coupling. This proposal does not select a broker, worker, ORM, model provider, or cloud platform.
+One application simplifies local development and lifecycle transactions. The worker must share application rules while recovering durable work after restarts; a database is not a scheduler, so job claiming and hosting guarantees need an explicit choice. This ADR does not select a cloud platform, model provider, object-storage provider, or concrete scheduler.

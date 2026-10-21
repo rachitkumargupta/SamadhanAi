@@ -1,7 +1,7 @@
 # Backend architecture proposal
 
-**Status:** Proposed; pending Team Kafka/backend review<br>
-**Implementation state:** A first complaint intake/tracking slice has been scaffolded under `backend/`. This document defines target module boundaries; the current code is partial and does not implement the complete MVP.
+**Status:** Target module boundaries aligned to the supplied blueprint; policy/operations details remain open.<br>
+**Implementation state:** The backend is a partial text-based citizen intake/tracking slice. Required image intake, async analysis, parent/child work, SLA worker, notifications, staff APIs, and verification are not implemented. See [backend README](../../backend/README.md).
 
 ## 1. Design goals
 
@@ -37,7 +37,7 @@ backend/                         # proposed project root
   ai/                            # typed contracts, context builder, orchestration, harness
   audit/                         # attributable business events and privileged action records
   persistence/                   # ORM mappings, repositories, transaction/session management
-  migrations/                    # database migration history (tool TBD)
+  migrations/                    # Alembic database migration history (used by current starter)
   integrations/                  # model, email/SMS, authority provider adapters (only when approved)
   observability/                 # structured logging, metrics, tracing/correlation
 ```
@@ -84,7 +84,7 @@ Authentication provider, token/session design, authorization model, and exact ro
 
 ### Application services
 
-Implement use cases such as `SubmitComplaint`, `GetComplaintForActor`, `RequestInformation`, `ProposeRoute`, `AssignComplaint`, `RecordProgress`, `EvaluateDeadlines`, `SubmitResolution`, and `VerifyResolution`. Names are illustrative. A use case owns orchestration, permission checks (directly or through policy service), transaction boundaries, idempotency, and creation of audit/domain events.
+Implement use cases such as `SubmitImageComplaint`, `QueueAnalysis`, `RequestInformation`, `ProposeRoute`, `CreateChildTickets`, `AssignComplaint`, `RecordProgress`, `EvaluateDueSLAs`, `SubmitResolution`, `VerifyResolution`, and `ReviewDispute`. Names are illustrative. A use case owns permission checks, transaction boundaries, idempotency, parent/child invariants, and audit/domain events. Persist the complaint and durable work intent before any model call.
 
 ### Domain model
 
@@ -95,9 +95,9 @@ Represent complaint state, allowed transitions, assignment constraints, SLA conc
 - Map persistence rows to domain/application types at a controlled boundary.
 - Enforce agreed invariants with transactions, foreign keys, unique constraints, checks, and concurrency controls.
 - Keep query methods scoped and purpose-specific; do not expose arbitrary query capabilities to agents.
-- Keep schema changes in migrations once database and migration tooling are selected.
+- Keep schema changes in Alembic migrations; the target database is PostgreSQL and concrete server versions require confirmation.
 
-ORM, database driver, migration tool, and database version are pending ADR-001.
+The target stack recommends PostgreSQL, SQLAlchemy, and Alembic. Current code already uses SQLAlchemy/Alembic, but these choices and supported PostgreSQL version still require team confirmation. The target uses pgvector for approved policy retrieval; it is not implemented.
 
 ### AI orchestration and execution controls
 
@@ -107,7 +107,7 @@ ORM, database driver, migration tool, and database version are pending ADR-001.
 - Bound time, retries, tokens/cost, and tool permissions; record run metadata and human disposition.
 - Produce a proposal or review item; call a domain/application action only through an explicit authorized use case.
 
-LangGraph is proposed by the project brief, not approved. Keep the boundary replaceable so deterministic/manual workflows can run without the orchestrator.
+The supplied blueprint recommends LangGraph with PostgreSQL-backed workflow persistence where appropriate. Keep provider/model adapters replaceable so deterministic/manual workflows remain available without an agent response. Exact framework version and persistence approach require a prototype and approval.
 
 ### External integrations and notifications
 
@@ -128,11 +128,19 @@ LangGraph is proposed by the project brief, not approved. Keep the boundary repl
 
 ### Database transaction
 
-For a state-changing use case, authorize the actor, read the current state/version, check domain preconditions, persist the change and required event/audit records in one transaction, and commit before reporting success. On a concurrency conflict, return a stable conflict and require the caller to refresh/review.
+For a state-changing use case, authorize the actor, read the current state/version, check domain preconditions, and persist the change with its required business event/audit records in one transaction. Repeatable event producers use a stable key for the logical operation and a database uniqueness constraint scoped to complaint and event type; duplicate-key handling returns the already-recorded logical outcome without repeating state changes or downstream job creation. Commit before reporting success. On a concurrency conflict, return a stable conflict and require the caller to refresh/review. Exact key representation and retention remain physical-schema decisions.
 
 ### External work
 
-Do not hold a database transaction open while waiting for an LLM, email/SMS provider, or authority API. Persist the intended operation and its correlation/idempotency key as appropriate; perform the provider call with bounded timeouts; record outcome and retry/terminal status. Whether this is synchronous, scheduled, or worker-based is pending reliability and deployment decisions. Choose an outbox/job mechanism only when the requirement warrants it.
+Do not hold a database transaction open while waiting for an LLM, email/SMS provider, or authority API. Commit the domain change, its complaint/business event, and any required PostgreSQL-backed durable job intent atomically; the job owns claiming/lease, attempts, retry schedule, and terminal outcome, while the business event owns the auditable complaint timeline. Event identity is separate from job identity: event idempotency prevents duplicate logical timeline records; job idempotency prevents duplicate work creation, and attempt state supports retry/recovery. Workers and consumers must tolerate repeated execution and revalidate current state before applying results. Provider calls use bounded timeouts and provider idempotency where supported; an unknown provider outcome without deduplication must be recorded and reconciled, not described as exactly-once delivery. The target blueprint requires a scheduled Python worker for async analysis, notifications, and deterministic SLA processing. Choose the scheduler and safe-claim mechanism against hosting constraints; a database is not itself a scheduler.
+
+The initial design defers a separate transactional outbox: PostgreSQL-backed jobs are sufficient for work intent consumed by the project's own worker, provided they are inserted in the same transaction as the domain change. If broker/event publication is later required, evaluate an outbox that is written atomically, retried independently, and consumed idempotently. Do not use complaint timeline events as a job queue or conflate either with provider delivery state.
+
+### Durable worker recovery
+
+Workers select due rows through indexes on status, availability/run-after time, and lease expiry, in bounded batches. Claim rows atomically with a PostgreSQL-safe mechanism (for example, row locking with `SKIP LOCKED`) and lease owner/expiry so concurrent workers do not execute the same lease concurrently. Persist attempt count, next retry time, safe failure details, and terminal outcome. Retry transient failures with bounded backoff; mark permanent/exhausted work terminal and expose it to operators. On restart, expired leases and overdue jobs become eligible again. Handlers must be idempotent, re-read target state before applying results, and use domain-event/job uniqueness to avoid duplicate logical effects.
+
+Reconciliation scans compare due verification deadlines, pending review cases, and notification intents with durable work so missing or stranded jobs can be recreated idempotently. Business status (for example, a complaint awaiting verification) remains distinct from job status. SLA evaluation is deterministic and batched; no repeated LLM polling. Invoke Monitoring & Escalation only for an actual breach event that needs its recommendation. The demo deployment must report scheduler lag, backlog, expired leases, retries, and terminal failures, and document downtime recovery; do not claim continuous monitoring unless the host guarantees it. Lease duration, batch size, retry/backoff limits, alert thresholds, and scheduler mechanism are implementation/deployment choices to validate.
 
 ### AI sequence
 
@@ -140,7 +148,7 @@ Call AI with a snapshot of minimum necessary inputs outside the mutation transac
 
 ## 6. API error and exception handling
 
-Map expected domain and application outcomes (validation, not found, forbidden, conflict, policy/reference unavailable, provider unavailable) into stable API errors. Do not return stack traces, SQL, prompts, credentials, internal topology, or another user's data. Include a correlation ID for support. Unexpected failures are logged with redaction and handled by a generic safe response. Detailed status/code mapping will be defined in a dedicated error-handling document before API implementation.
+Map expected domain and application outcomes into stable API errors. The initial FastAPI slice already normalizes validation failures, HTTP exceptions (including framework 404/405), and unexpected failures with the documented safe envelope and correlation ID. Do not return stack traces, SQL, prompts, credentials, internal topology, or another user's data. Exact status/code registry remains subject to team approval; see [error-handling contract](../api/error-handling.md).
 
 ## 7. Testing strategy by boundary
 
@@ -156,10 +164,12 @@ Test runner, database test environment, lint/type tools, and CI remain team deci
 
 ## 8. Implementation sequence recommendation
 
-1. Approve roles, state machine, API contract, and data ownership.
-2. Create one vertical slice for complaint registration, retrieval, and audit using a chosen persistence/migration stack.
-3. Add authorization-aware assignment, progress, resolution, and verification.
-4. Add SLA/monitoring and notification records; connect external delivery only after provider approval.
-5. Add typed AI proposal interfaces and evaluation/fallback behavior.
+1. Confirm role grants, anonymous tracking security details, normalized state names/transitions, taxonomy, and data ownership. Implement the 48-hour citizen confirm/dispute workflow and reminder, then the intended seven-calendar-day overdue-review handoff with jurisdiction-timezone deadline semantics, durable recovery, late-response serialization, and assigned reviewer outcomes.
+2. Extend the current slice to image validation/private storage and persist complaint plus durable async analysis job before model calls.
+3. Add the Complaint Analyst and human review; then policy-grounded routing validation.
+4. Build the deterministic recoverable SLA worker, durable idempotent events, and recovery checks.
+5. Add parent-child tickets with independent child assignments/SLAs/history, aggregation and routing-loop controls; invoke Monitoring & Escalation only from valid events; add notification records.
+6. Add officer work, evidence submission, the 48-hour citizen confirmation/dispute flow, and independent review. Implement the intended seven-calendar-day verification-overdue routing after deadline, retry/recovery, and reviewer outcome details are specified.
+7. Harden authorization, recovery, privacy, performance, and acceptance tests; connect optional email/MCP/authority integrations only when approved.
 
-This sequence supports the MVP lifecycle before introducing AI as a dependency.
+AI remains optional for transaction correctness and core recordkeeping; its analysis runs asynchronously after durable complaint persistence.

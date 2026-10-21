@@ -1,137 +1,96 @@
-# Complaint lifecycle and state-transition proposal
+# Complaint lifecycle and state-machine proposal
 
-**Status:** Proposed for product/policy review; not an approved workflow.<br>
-**Related:** [Functional requirements](../requirements/functional-requirements.md), [roles and use cases](../requirements/user-roles-and-use-cases.md), [MVP scope](../requirements/MVP-scope.md)
+**Status:** Target workflow. Anonymous tracking and the seven-calendar-day overdue-review path are intended project policies. Role grants, normalized state names, daylight-saving ambiguity handling, reviewer authority mapping, and production operations require detail before implementation.<br>
+**Related:** [Functional requirements](../requirements/functional-requirements.md), [roles and use cases](../requirements/user-roles-and-use-cases.md), [MVP scope](../requirements/MVP-scope.md), [master blueprint](implementation-blueprint.md)
 
-The state names and rules below provide a concrete starting model. Team Kafka and the relevant authority/policy owner must approve or replace them before implementation. Do not encode these examples as final policy without approval.
+This page describes the target workflow, not a claim about current implementation or statutory municipal authority. State names and implementation details require approval. The project baseline requires citizen confirm/dispute after resolution evidence, a reminder at 48 hours without response, and no closure by silence. Application code alone authorizes and persists transitions; an agent recommendation is never a transition.
 
-## 1. Candidate states
+## Complaint/ticket states
 
-| Candidate state | Meaning | Citizen visibility (proposal) |
-|---|---|---|
-| `submitted` | Complaint accepted and reference created; initial triage has not completed. | Show receipt and reference. |
-| `needs_information` | Specific additional information has been requested and the case is waiting for a response. | Show request, due guidance if approved, and how to respond. |
-| `under_review` | Complaint is being checked, classified, or manually triaged; may be unassigned. | Show a plain-language review status. |
-| `assigned` | A responsible department/team/officer has accepted or been given the work under policy. | Show department or progress wording approved for public display. |
-| `in_progress` | Authorized staff have begun work and may record progress. | Show public-safe status and updates. |
-| `resolved_pending_verification` | Staff submitted a proposed resolution and evidence; required verification has not completed. | Explain that resolution is under verification. |
-| `closed` | Approved verification policy has been satisfied and closure recorded by an authorized actor/rule. | Show closure outcome, date, and permitted summary. |
-| `rejected` | Complaint is not accepted for processing for an approved reason. | Show an approved explanation and any review/appeal route. |
-| `withdrawn` | Complaint was withdrawn under an approved policy. | Show withdrawal outcome where appropriate. |
+| State | Meaning |
+|---|---|
+| `SUBMITTED` | Image-first complaint persisted; analysis job is pending or queued. |
+| `PROCESSING` | Analysis/routing workflow is running asynchronously. |
+| `NEEDS_INFORMATION` | Required clarification has been requested. |
+| `PENDING_REVIEW` | Human review is needed for uncertainty, missing/conflicting references, location, or routing. |
+| `READY_FOR_ROUTING` | Analysis is sufficiently complete for routing validation. |
+| `ASSIGNED` | A validated department/officer assignment exists. |
+| `IN_PROGRESS` | Authorized staff are working and recording progress. |
+| `RESOLVED_PENDING_VERIFICATION` | Officer submitted resolution details/evidence; citizen verification is pending. |
+| `DISPUTED` | Citizen disputed the proposed resolution. |
+| `PENDING_AUDIT_REVIEW` | Independent reviewer must decide a dispute or authorized exception. |
+| `VERIFICATION_OVERDUE` | No citizen response by the intended seven-calendar-day deadline from verification start; route to the Independent Reviewer. This transition does not close the case. |
+| `CLOSED` | Approved verification/closure requirements are satisfied. |
+| `CANCELLED` | Ticket ended through an explicitly permitted, audited cancellation. |
 
-These are not required database enum values. The team must decide whether states such as `queued`, `reopened`, `cancelled`, or `duplicate_linked` are explicit states or events/relationships. A possible duplicate must not cause automatic rejection or merging.
+These are proposed normalized names. `RESOLVED_PENDING_VERIFICATION` is the normalized form of the blueprint's semantic `Pending_Citizen_Verification`; `VERIFICATION_OVERDUE` represents the intended Samadhan AI policy after seven calendar days without response. These are not claims about universal municipal rules. Keep SLA state separate. Rejection, reopening, and appeal semantics need explicit policy decisions; do not add ad hoc transitions.
 
-## 2. Proposed lifecycle flow
+## Main flow
 
 ```mermaid
 flowchart TD
-    Draft[Citizen prepares complaint] --> Validate{Submission valid and permitted?}
-    Validate -->|No| Correct[Return safe field guidance]
-    Correct --> Draft
-    Validate -->|Yes| Submitted[submitted: register reference and event]
-    Submitted --> Triage[under_review: triage and analysis proposal]
-    Triage --> Info{Required information missing?}
-    Info -->|Yes| Needs[needs_information: record request]
-    Needs --> Response[Citizen provides response]
-    Response --> Triage
-    Info -->|No| Route{Approved route available?}
-    Route -->|No| Queue[Remain under review in unassigned queue]
-    Queue --> Route
-    Route -->|Yes| Assigned[assigned: authorized assignment]
-    Assigned --> Work[in_progress: staff records work]
-    Work --> Monitor{Deadline or breach condition?}
-    Monitor -->|Yes| Alert[Record policy-based finding/action]
-    Alert --> Work
-    Monitor -->|No or work complete| Evidence[Submit resolution evidence]
-    Evidence --> Pending[resolved_pending_verification]
-    Pending --> Verify{Verification policy satisfied?}
-    Verify -->|No: more work| Work
-    Verify -->|No: reject resolution| Work
-    Verify -->|Yes| Closed[closed: authorized closure event]
-    Triage --> Reject[rejected: authorized reason]
-    Submitted --> Withdraw[withdrawn: approved withdrawal path]
+  Submit[Image + optional text + GPS or map point] --> Persist[Validate and persist complaint, media reference, event, durable job]
+  Persist --> Analyst[Complaint Analyst async]
+  Analyst --> Review{Sufficient and valid?}
+  Review -->|No| Human[Clarification or human review queue]
+  Human --> Analyst
+  Review -->|Yes| Route[Resolution & Routing recommendation]
+  Route --> Validate[Backend validates references and eligibility]
+  Validate -->|Conflict or uncertain| Human
+  Validate -->|One department| Ticket[Create assigned work ticket]
+  Validate -->|Multiple departments| Children[Create parent + independent child tickets]
+  Ticket --> Work[Ongoing staff work + deadline monitoring]
+  Children --> Work
+  Work --> Breach{SLA deadline breached?}
+  Breach -->|Yes| BreachEvent[Commit idempotent breach event + durable escalation job]
+  BreachEvent --> Escalate[Monitoring & Escalation recommends when required; backend validates]
+  Escalate --> Work
+  Breach -->|No| Work
+  Work --> Resolution{Officer completes work?}
+  Resolution -->|No| Work
+  Resolution -->|Yes| Evidence[Officer submits resolution notes and evidence]
+  Evidence --> Verify[Pending citizen verification: 48 hours]
+  Verify -->|Confirm| Close[Authorized closure]
+  Verify -->|Dispute| Audit[Independent review queue]
+  Verify -->|48h no response| Remind[Send reminder; keep pending]
+  Remind --> Remain[Remain pending; no closure by silence]
+  Remain -->|No response by day 7| Overdue[VERIFICATION_OVERDUE; route to reviewer]
+  Overdue --> ReviewerDecision[Independent Reviewer records reasoned outcome]
+  ReviewerDecision -->|Authorized closure decision| Close
+  ReviewerDecision -->|Return/reopen if authorized| Work
+  Audit --> ReviewerDecision
 ```
 
-The loop from “work complete” in the diagram is illustrative. Monitoring and resolution are distinct activities; the exact triggers for returning to work or requesting verification need a transition table approved by policy owners.
+## Parent and child behavior
 
-## 3. Candidate transition rules
+- The citizen's parent complaint represents the overall report. Department-specific child tickets are independent work items.
+- Every child has its own assignment, state/history, evidence, rejection/reassignment history, escalation and SLA clock.
+- Parent progress is an aggregation of child states; it must not overwrite their status or imply work is complete when it is not.
+- Normal parent closure requires every child to complete its required verification workflow. A separately authorized senior exception requires a reason and audit event, and must not mark or hide unresolved children.
+- Department rejection requires a reason. Repeated rejection or unresolved jurisdiction conflict goes to human review instead of an uncontrolled routing loop.
 
-| From → to | Initiator | Proposed preconditions and records | SLA consideration |
-|---|---|---|---|
-| New → `submitted` | Citizen or allowed intake channel | Input passes validation; reference and initial event commit atomically. | Defines candidate clock start; exact event and timing must be approved. |
-| `submitted` → `under_review` | Application rule or authorized triage staff | Record triage start and source; do not require AI availability. | May start a separate triage target if policy defines one. |
-| `under_review` → `needs_information` | Authorized staff; AI may suggest only | Record specific request, requester, time, and due guidance if applicable. | Decide whether and when any clock pauses; no implicit pause. |
-| `needs_information` → `under_review` | Citizen response or authorized staff | Validate response, attach to case, record response event, resume review. | Resume behavior and late-response handling must be configured. |
-| `under_review` → `assigned` | Authorized assignee/supervisor or approved deterministic rule | Destination exists, is eligible and effective; assignment actor/reason and SLA policy reference recorded. | Select applicable approved rule and clock start/reset behavior. |
-| `assigned` → `in_progress` | Assigned officer or approved rule | Actor has current assignment/scope; record start/action. | Work clock follows approved policy. |
-| `in_progress` → `in_progress` | Authorized staff/system event | Progress event is allowed; distinguish internal note from citizen-visible update. | Event may affect clock only if policy explicitly states so. |
-| `in_progress` → `resolved_pending_verification` | Authorized officer | Resolution summary/evidence meets submission requirements; record submitter and evidence references. | Define whether work SLA stops, continues, or changes to verification SLA. |
-| `resolved_pending_verification` → `closed` | Authorized verifier or approved policy-driven action | Evidence and required checks pass; any separation-of-duties rule is satisfied; record verifier, time, outcome, and policy version. | Record closure/verification timing as policy requires. |
-| `resolved_pending_verification` → `in_progress` | Authorized verifier/supervisor | Verification rejected or more work requested with reason; record disposition. | Define continued or restarted clock behavior. |
-| Eligible active state → `rejected` | Authorized staff under approved criteria | Approved reason code and explanation; record actor and any appeal/review route. | Define whether SLA ends and whether audit retention continues. |
-| Eligible state → `withdrawn` | Citizen or authorized staff according to policy | Verify requester authority; record request and disposition. | Define clock stop and downstream notification. |
-| `closed` → active/reopened path | Authorized actor only, if policy permits | Reopen reason, link to prior closure, preserve history, and notify as allowed. | Define new clock versus continuation and applicable rule version. |
+## SLA processing and escalation
 
-All transitions must re-read the current complaint version/state before commit. Invalid or stale transitions must not silently overwrite newer work.
+1. Apply an effective-dated, configured SLA policy and persist its version and deadline for each child ticket.
+2. A deterministic scheduled worker queries due records in indexed batches, safely claims work, and rechecks current ticket state/deadline.
+3. In one database transaction, persist the breach outcome, its `SLA_BREACHED` business event, and durable escalation job intent when escalation processing is required. An idempotency uniqueness rule prevents repeated evaluation of the same logical breach from creating duplicate events/jobs; the job tracks attempts and recovery after downtime. Duplicate processing must not create duplicate logical breaches or escalations.
+4. Invoke Monitoring & Escalation only when a valid breach/escalation event needs reasoning. The agent summarizes history and recommends the next authority; backend validates policy, authority, and action before persisting or notifying.
+5. Optional warnings use deterministic rules. No LLM continuously polls deadlines or calculates timestamp comparisons.
 
-## 4. Event and audit model
+SLA values, calendars, pause/resume semantics, scheduler, claim mechanism, and deployment guarantees remain open. Sample policies are demonstration-only and must be labelled.
 
-The current state is a convenient projection; the event history is the accountable record of how it changed. For each material transition or privileged action, capture at least:
+## Resolution verification
 
-- complaint reference and event type/version;
-- prior and resulting state where applicable;
-- actor identity or named system process;
-- timestamp and correlation/request ID;
-- reason code and safe explanation where required;
-- relevant assignment, SLA/policy version, or evidence reference;
-- whether the event is citizen-visible, staff-only, or restricted audit data.
+Officer submission is a proposal, not closure. The backend stores required category-appropriate evidence, starts the 48-hour citizen decision period, records its deadline, and sends the citizen a notification and proof card with confirm/dispute actions. Citizen confirmation triggers the authorized normal closure transition; a dispute enters the assigned Independent Reviewer queue. At 48 hours without response, send a reminder and keep the case pending. Silence never counts as confirmation.
 
-Do not place unrestricted complaint text, credentials, or full attachment contents in ordinary logs. Define correction, retention, export, and deletion behavior with policy owners. Corrections should be attributable events, not silent rewrites of history.
+**Intended overdue path:** if no response has been received by seven calendar days from verification start, transition the case to `VERIFICATION_OVERDUE` and route it to the Independent Reviewer queue. The reviewer examines evidence and history, records a reasoned outcome, and may approve closure only when explicitly authorized or return/reopen the work when authorized. Missing citizen response alone is never proof of resolution. The 7-day threshold is a Samadhan AI design policy, not a universal municipal rule. A late citizen response is recorded. Before reviewer assignment, process it through ordinary verification rules after checking current state and authorization. Once review is queued or assigned, preserve the response and show it to the reviewer; it must not automatically close the complaint or cancel active review. A late dispute does not automatically reprioritize the review; it is recorded as new input for the reviewer. Serialize responses, reviewer assignment/reassignment, and decisions using a transaction and row lock or version check. Record review outcome, actor, timestamp, reason, and authorized resulting transition. Backend transition guards enforce these rules.
 
-## 5. SLA clock model questions
+For composite complaints, citizen verification is tracked per child/work ticket; parent progress is derived from its children. Normal parent closure requires every applicable child workflow to complete. An exceptional parent closure requires a specifically authorized Senior Authority, reason, and audit event; it cannot change or hide unresolved child states. The Independent Reviewer role does not imply Senior Authority permissions.
 
-The application should calculate deadlines deterministically from approved rules. An AI agent may flag risk, but it must not create or change a deadline.
+## Event and audit invariants
 
-Approve the following before implementation:
+For each material action record actor/system, action, target, time, prior/resulting state, reason/reference, request/correlation ID, visibility, and applicable policy/version. Preserve model proposal and reviewer disposition separately. State changes and required events commit atomically. Assign each repeatable business-event producer a stable key for one logical operation and enforce uniqueness within its complaint/event-type scope; exact key construction and retention are physical-schema decisions. A duplicate-key conflict means the logical event already exists and must not be emitted again. Job retries use separate job identity/attempt state and must not create another business event. Consumers and handlers remain idempotent because work may be delivered or executed more than once. Stale work cannot overwrite newer state. Operational logs must not contain raw images, credentials, or unnecessary personal data.
 
-1. Which event starts each clock: submission, acceptance, assignment, or another point?
-2. Which work calendar, timezone, holidays, and business hours apply?
-3. Whether a request for information pauses any clock, and which actor/event can pause or resume it.
-4. Whether reassignment, reopening, appeal, or resolution verification starts a new clock or continues an existing one.
-5. How policy versions/effective dates apply to in-flight complaints and retroactive changes.
-6. What constitutes at-risk, due, overdue, and breached; which authorized roles receive each escalation.
-7. How data corrections and clock recalculation are audited.
+## Decisions before production
 
-No concrete SLA durations or government policy values are defined in this document.
-
-## 6. Resolution verification and disputes
-
-Before closure, define:
-
-- acceptable evidence types and who may submit or view them;
-- whether verification is performed by a different staff member, supervisor, citizen, or combination;
-- whether citizen confirmation is required, optional, or time-bounded;
-- what happens if the citizen does not respond or disputes the outcome;
-- who may reopen or appeal, the time window, and the review path;
-- whether resolution verification has its own SLA;
-- which closure facts are publicly displayed.
-
-Until these are decided, “closed” is a proposed terminal state only. A model’s claim that an issue is resolved is never sufficient verification.
-
-## 7. Human review and exceptions
-
-Route to a human review queue when an AI result is invalid or uncertain, reference data is missing/conflicting, the requested transition is unauthorized, a case is disputed or sensitive, or policy requires approval. Queue records should identify the reason, owner/scope, age, and next allowed action. If no route is configured, retain the case in an authorized general triage queue rather than inventing an owner.
-
-## 8. Open decisions before implementation
-
-- Approve state names, terminal/reopen states, and transition table.
-- Approve which transitions citizens, officers, supervisors, administrators, and automated processes can request.
-- Define citizen-visible status/event projection and internal note/evidence handling.
-- Define assignment acceptance, transfer, unassigned queue, rejection, withdrawal, duplicate-linking, and appeal behavior.
-- Define SLA clock semantics, values, policy source/versioning, and escalation rules.
-- Define resolution evidence, verifier authority, separation of duties, citizen confirmation, and closure/reopen policy.
-- Define audit record protections, retention, and data correction/deletion requirements.
-
-## 9. Change management
-
-Once approved, record the state machine and policy semantics in an ADR or policy-owned specification, update functional requirements and API/data contracts, and add transition tests before coding the full workflow. Any later policy change must identify effective date, in-flight case handling, migration/backfill need, and audit implications.
+Approve role grants and normalized state transitions; category/department/jurisdiction data; SLA values/calendar; evidence standards; reviewer mapping/outcomes; parent exception authority; correction/retention/deletion; and event/job recovery behavior. The intended seven-calendar-day review path and late-response default are documented; before implementation, decide real-world reviewer authority/mapping and the jurisdiction's daylight-saving ambiguity rule. Recommended deadline semantics: reminder due exactly 48 elapsed hours after verification starts; derive the seven-day local deadline at the same wall-clock time seven dates later in the complaint jurisdiction's configured IANA timezone; preserve timezone context and store due instants in UTC; treat the overdue deadline as inclusive (`now >= deadline`); and process missed deadlines after downtime. A missing timezone must be surfaced, never inferred from a device; keep the complaint pending and revalidate current state before overdue transition/reviewer assignment. Update this contract and its API/data model whenever approved decisions change.

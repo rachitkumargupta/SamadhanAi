@@ -1,100 +1,49 @@
 # Product Requirements Document
 
-**Status:** Draft for Team Kafka review<br>
+**Status:** Target baseline from Team Kafka's supplied implementation blueprint; detailed policies require approval.<br>
 **Product:** Samadhan AI<br>
-**Date:** 2026-10-16
+**Last aligned:** 2026-10-21<br>
+**Master reference:** [Implementation blueprint](../architecture/implementation-blueprint.md)
 
-For the proposed actors, permission boundaries, and detailed use-case flows, see [user roles and use cases](user-roles-and-use-cases.md).
-The traceable MVP behavior requirements are in [functional requirements](functional-requirements.md).
-Quality and operational requirements are detailed in [non-functional requirements](non-functional-requirements.md); capacity and service-level targets remain pending team input.
-The proposed release boundary and gates are in [MVP scope](MVP-scope.md).
+## Product vision
 
-## Problem
+Samadhan AI helps citizens report civic infrastructure problems and follow them through accountable departmental work, deadline monitoring, resolution evidence, and verification. AI interprets images and complaint context and recommends actions; deterministic application workflows and authorized people control operational decisions.
 
-Citizens may lack a transparent way to submit civic complaints, learn where they were routed, understand progress and deadlines, and know whether a reported issue was actually resolved. Civic staff may lack a consistent workflow for intake, triage, assignment, monitoring, and auditable closure. The intended system supports this lifecycle while preserving authorized human control.
+## Users
 
-## Users and responsibilities
+- **Citizen:** submit an image-first report with optional text, provide location, track progress, provide requested information, and confirm or dispute a submitted resolution.
+- **Officer:** view scoped assignments, location/image/analysis, accept or reject with a reason, record work notes/progress, submit category-appropriate resolution evidence, and inspect own workload/SLA time. Officers cannot verify on the citizen's behalf or finalize normal closure.
+- **Department administrator:** manage complaints and assignments only within explicitly authorized department/jurisdiction scope; cannot bypass verification or decide disputed closures by default.
+- **Independent Reviewer:** review assigned disputes and verification-overdue cases under the intended Samadhan AI policy. This is a logical role mapped to an appropriately authorized municipal authority outside the department under review, not an assumed statutory title.
+- **Senior Authority:** authorize exceptional parent closure only with an explicit grant, reason, and audit record. This role does not automatically confer Independent Reviewer authority.
+- **System / policy administrators:** manage only their separately granted account, operational, or policy capabilities; none implies complaint closure or dispute-review authority.
+- **Three AI agents:** Complaint Analyst, Resolution & Routing, and Monitoring & Escalation. Agents are constrained system components, not user roles or authorities.
 
-- **Citizen:** submit a complaint, provide requested details, track its status, receive updates, and provide feedback or challenge a proposed resolution under policy.
-- **Officer / case handler:** review assigned complaints, request information, record actions, update progress, and submit resolution evidence.
-- **Department supervisor:** oversee a department queue, reassign work where authorized, and respond to delay/escalation prompts.
-- **Administrator / policy steward:** manage approved users, roles, departments, jurisdiction mappings, SLA policies, and operational configuration. Exact administrative boundaries are pending.
-- **Support / auditor (optional role):** inspect permitted history and help investigate access or process issues. Whether this is a distinct role is pending.
+Exact role grants, real-world role mapping, scopes, and separation-of-duties details require approval. Anonymous intake and tracking are supported project policy; implementation must use a secure tracking secret separate from the public complaint ID, with rate limiting and enumeration protection.
 
-## Product goals
+## Target workflow
 
-1. Give a complaint a stable identifier and understandable status.
-2. Route work using approved department, jurisdiction, and policy data.
-3. Make important decisions, assignments, transitions, and notifications traceable.
-4. Surface missing information and deadlines without presenting AI output as authoritative.
-5. Support resolution evidence and a team-approved closure verification policy.
+1. Citizen submits a required image, optional description, and GPS or manually selected location.
+2. The API validates the request, stores complaint/media references and an initial event, and enqueues durable analysis work before any model call. Submission remains recorded if AI is unavailable.
+3. The Complaint Analyst returns validated description, category, priority/severity recommendation, visible evidence, uncertainty, missing information, possible multi-department involvement, and review recommendation.
+4. Resolution & Routing uses approved jurisdiction, department, officer, and policy data to recommend destinations, child-ticket splitting, and SLA policy references. Backend checks all recommendations; ambiguous cases enter human review.
+5. A single-department issue creates one work ticket. A composite issue has a parent complaint and independently assigned child tickets, each with its own history and SLA. Parent progress reflects child progress.
+6. A deterministic, recoverable worker checks persisted SLA deadlines in batches. It emits an idempotent breach event; Monitoring & Escalation is invoked only when a real event needs escalation reasoning.
+7. Officers record progress and submit resolution evidence. “Resolved” starts a 48-hour citizen confirmation/dispute window; it does not immediately close the ticket. Notify the citizen and provide a proof card with confirm/dispute actions. At 48 hours without a response, send a reminder and keep the ticket pending. Silence is not confirmation. Disputes enter the assigned Independent Reviewer queue. If no response has arrived within seven calendar days from verification start, transition to `VERIFICATION_OVERDUE` and route to that queue under the intended project policy; silence alone never proves resolution. Process late responses before reviewer assignment under ordinary verification rules. Once review is queued/assigned, preserve the response for the reviewer; do not auto-close or cancel active review. A late dispute does not automatically reprioritize review. Serialize competing responses and review decisions and record reasoned outcomes. Calculate the deadline in the jurisdiction timezone at the same local time seven calendar dates later, persist the UTC instant and timezone context, and define daylight-saving ambiguity handling. The due boundary is `now >= deadline`; worker recovery revalidates current state.
+8. Durable in-app notifications record intended delivery and outcome. Email and other channels are optional integrations and cannot undo complaint transactions.
 
-## Core workflow
-
-1. Citizen submits complaint and optional attachment/location details.
-2. System validates and registers it, returns an identifier, and records an audit event.
-3. Analyst proposes structured classification and flags missing details or possible duplicates.
-4. Authorized staff/system rules decide whether to ask for more information or continue.
-5. Routing uses approved mappings to propose a department/team and applicable SLA; uncertain or unmapped cases enter human review.
-6. Authorized personnel accept or change assignment; citizen receives a status update as appropriate.
-7. Monitoring evaluates due dates and permitted escalation rules, recording alerts/actions.
-8. Officer records work and submits resolution evidence.
-9. Required reviewer or verification policy determines closure; citizen is notified and the record remains auditable.
-
-Detailed states, transition permissions, SLA clocks, and verification evidence are **pending team and policy agreement**.
-
-## Functional requirements (proposed)
-
-- **FR-01 Intake:** accept complaint text and configured structured fields; validate and acknowledge with a unique, non-guessable public reference.
-- **FR-02 Attachments:** support optional evidence subject to file type/size, malware scanning, access, and retention policy (limits TBD).
-- **FR-03 Identity and roles:** authenticate applicable users and enforce server-side role and resource-level authorization.
-- **FR-04 Tracking:** expose only permitted complaint details and status history to a citizen and authorized staff.
-- **FR-05 Analysis:** produce schema-validated category/severity/priority suggestions, missing-information prompts, rationale/provenance, and confidence/uncertainty handling.
-- **FR-06 Routing:** use maintained department, jurisdiction, and policy data; never invent a destination or SLA. Support unassigned/review queues.
-- **FR-07 Assignment:** record assignment, actor, time, and reason; enforce authorized changes.
-- **FR-08 SLA and monitoring:** calculate due dates from approved rules and recorded timestamps; detect upcoming or breached deadlines.
-- **FR-09 Notifications:** record delivery attempts and outcomes; avoid exposing sensitive content through insecure channels.
-- **FR-10 Resolution and closure:** record actions/evidence and enforce the approved verification and closure transition policy.
-- **FR-11 Audit:** preserve attributable state changes and privileged actions; define correction and retention policies.
-- **FR-12 Administration:** provide authorized maintenance of reference data and policy, with audit history.
-
-## Non-functional requirements (initial targets pending review)
-
-- **Security/privacy:** least privilege, validated inputs, encrypted transport, protected credentials, limited personal data, documented retention, and access auditing.
-- **Reliability:** transactional complaint creation and transitions; retry-safe external side effects; clear degraded-mode behavior.
-- **Usability/accessibility:** plain-language status and accessible citizen/staff experiences; target standard and supported languages TBD.
-- **Performance/capacity:** expected users, submission volume, attachment sizes, and response-time objectives are TBD; establish measurable targets before release.
-- **Observability:** structured operational logs and metrics with correlation IDs while excluding unnecessary complaint text, credentials, and personal data.
-- **Maintainability:** modular boundaries, migration-managed schema changes, automated checks, and documented API contracts.
-- **AI quality:** bounded outputs, validation, evaluation on representative approved data, human review thresholds, and a non-AI fallback path.
+Location and jurisdiction come from permitted device/manual coordinates and configured boundary rules, never image inference. AI suggestions never bypass server-side authorization, deterministic validation, or human review requirements.
 
 ## MVP scope
 
-Include role-aware access, complaint intake/IDs, tracking, staff and department records, an auditable lifecycle, manual or policy-backed classification/routing, missing-information handling, assignments, configurable SLA rules, notification records, escalation records, resolution evidence, closure controls, and administrative visibility.
+The target MVP includes image-first intake, secure media storage, location/jurisdiction capture, asynchronous analysis, human review, policy-grounded routing, parent/child work, deterministic SLA monitoring, event-triggered escalation, officer work and evidence, citizen verification/dispute, in-app notification records, scoped administration, audit, and operational recovery. The first delivery can be phased; partial implementation must be described accurately.
 
-The first usable milestone should complete the complaint lifecycle end to end. AI can initially make bounded suggestions behind explicit interfaces; core recordkeeping and human workflows must remain usable when AI is unavailable.
+Duplicate detection/consolidation, heatmaps, predictive maintenance, dynamic allocation, multilingual/voice reporting, IoT, and live municipal integrations are future scope unless separately approved. Exactly three core agents are planned; no autonomous close/reject/merge and no LLM-based deadline polling.
 
-## Out of scope for MVP (unless re-approved)
+## Quality and release outcomes
 
-Duplicate consolidation, geographical heatmaps, predictive maintenance, dynamic resource/SLA allocation, multilingual/voice reporting, IoT, city-wide analytics, and live government/municipal system integrations. Availability of any such integration is unverified.
+See [functional requirements](functional-requirements.md), [NFRs](non-functional-requirements.md), and [MVP release boundary](MVP-scope.md). Demonstration completion requires the image-to-verified-resolution workflow, composite tickets, deadline scale and downtime recovery, idempotent breach processing, scoped authorization, and critical acceptance tests. Passing tests and deployment evidence are required before claiming features complete.
 
-## Acceptance criteria for MVP (draft)
+## Open decisions
 
-- A permitted citizen can submit a valid complaint and receive a reference; invalid input is rejected with a safe actionable error.
-- A citizen can see only their permitted complaint information; unauthorized users cannot read or change it.
-- Authorized staff can review, assign, update, and record resolution with attributable history.
-- Routing and SLA use configured approved data, or explicitly enter a review/unassigned path when data is missing.
-- Due-date monitoring and notification outcomes are traceable; duplicate requests do not create unintended duplicate effects where idempotency is required.
-- Closure cannot occur without satisfying the team-approved verification policy.
-- AI failure or invalid output does not corrupt the complaint or bypass authorization; a human/manual path remains available.
-- Requirements have tests and operational/documentation checks agreed for the release.
-
-## Assumptions and open questions
-
-- The supplied brief is the only inspected product reference; the presentation was not found in the searched locations.
-- Target city/authority, jurisdiction boundaries, department taxonomy, policies, SLA values, identity proofing needs, notification channels, retention rules, and legal obligations are unknown.
-- Decide whether anonymous reports are allowed and how citizens authenticate or recover access.
-- Decide if/when AI suggestions require mandatory approval and what confidence/uncertainty behavior is acceptable.
-- Define complaint statuses, reopen/appeal behavior, closure verification evidence, and escalation authority.
-- Define expected scale, accessibility/language targets, hosting, backup, and availability objectives.
-- Confirm technology versions, ORM/migration tool, LLM provider, frontend setup, testing stack, and deployment platform in ADR review.
+Anonymous token encoding, HMAC key storage/rotation, expiry/renewal defaults, rate-limit thresholds and recovery channel; final role grants and mapping of Independent Reviewer/Senior Authority to actual governance; approved categories and official jurisdiction/departments; image provider/storage/scanning/retention; model and data-handling terms; SLA and escalation values/calendars; reminder delivery; reviewer authority/outcomes and jurisdiction's daylight-saving ambiguity rule; scheduler/hosting guarantees; notification channel; and privacy/legal, accessibility, recovery, and capacity targets. Lost anonymous tokens have no account-style recovery without independent identity proof. Sample policies are demonstration-only and must be labelled.

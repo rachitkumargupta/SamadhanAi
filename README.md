@@ -1,33 +1,27 @@
 # Samadhan AI
 
-Samadhan AI uses multiple AI agents to analyze civic complaints, route them to the appropriate authority, assign SLAs, monitor progress, and escalate delayed cases. LangGraph is proposed for orchestration and RAG for relevant departmental policies, with humans involved in uncertain decisions. These capabilities are planned; the current backend is an initial complaint-intake and tracking slice.
+Samadhan AI is a civic complaint workflow platform. Its target is image-first citizen reporting followed by structured AI assistance, validated departmental work, deterministic SLA monitoring, and evidence-backed citizen verification. Application code retains authority for permissions, routing validation, state changes, deadlines, notifications, and audit.
 
-Samadhan AI is a Team Kafka project intended to give citizens a transparent way to submit and track civic complaints, while helping authorized staff route, monitor, and verify resolution. AI recommendations remain subject to approved policy and human review.
+The target has exactly three core agents: Complaint Analyst, Resolution & Routing, and Monitoring & Escalation. Complaints involving multiple departments use a parent record and independently tracked child tickets. SLA deadlines are processed by a deterministic recoverable worker; the escalation agent is invoked by valid events, not continuous polling. See the [master implementation blueprint](docs/architecture/implementation-blueprint.md).
 
-## Project status
+## Current implementation status
 
-**Phase 0 documentation is complete.** The first backend slice is scaffolded for citizen complaint submission and owner-scoped tracking. Its dependencies are installed in the local ignored `.venv`, but the app has not been run or verified and its stack choices remain provisional. The initial workspace audit found no source code or dependency manifests. The reference presentation `SamadhanAI.pdf` was not found in the workspace or Desktop tree searched on 2026-10-16.
+The backend currently provides a preliminary text-based citizen intake and owner-scoped tracking slice. It does **not** yet implement required image intake, location capture, asynchronous AI, policy-grounded routing, parent/child tickets, staff workflows, SLA processing, escalation, notifications, or citizen verification. Those are target capabilities, not completed features. Current environment and endpoints are listed in [backend README](backend/README.md).
 
 ## Documentation
 
 - [Documentation index](docs/README.md)
-- [Backend implementation and setup](backend/README.md)
-- [Product requirements](docs/requirements/PRD.md)
+- [Product requirements and MVP scope](docs/requirements/PRD.md)
+- [Functional requirements](docs/requirements/functional-requirements.md)
 - [System architecture](docs/architecture/system-architecture.md)
 - [Backend architecture](docs/architecture/backend-architecture.md)
-- [AI agent boundaries](docs/architecture/ai-agent-architecture.md)
+- [Three-agent contracts](docs/architecture/ai-agent-architecture.md)
 - [Complaint lifecycle](docs/architecture/complaint-lifecycle.md)
-- [Security design](docs/security/security-design.md)
-- [API inventory and guidelines](docs/api/api-guidelines.md)
 - [Conceptual data model](docs/database/data-model.md)
-- [Architecture decision records](docs/decisions/)
-- [Development standards](docs/development/standards.md)
-- [Roadmap and team boundaries](docs/planning/roadmap.md)
+- [Security design](docs/security/security-design.md)
+- [API contract guidance](docs/api/api-guidelines.md)
+- [Decisions and roadmap](docs/decisions/README.md) · [Roadmap](docs/planning/roadmap.md)
 
-## Setup
+## Setup and contribution
 
-See [backend setup instructions](backend/README.md). Framework, database, and authentication choices are provisional. Do not add secrets or real credentials to the repository.
-
-## Contribution
-
-See [CONTRIBUTING.md](CONTRIBUTING.md). Keep pull requests focused, state what was actually verified, and update the relevant requirements and architecture docs as decisions change.
+See [backend setup instructions](backend/README.md) and [contribution guidelines](CONTRIBUTING.md). Do not commit secrets, real complaint data, or database dumps. Label demo policy data as non-official. Update requirements and architecture when decisions change, and distinguish implemented behavior from the target blueprint.

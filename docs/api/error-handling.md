@@ -1,6 +1,6 @@
 # API error-handling contract
 
-**Status:** Proposed; must be reconciled with the selected framework and approved API contract. No response behavior is implemented yet.
+**Status:** Proposed; must be reconciled with the selected framework and approved API contract. The initial backend slice implements the project-specific envelope for request validation, HTTP exceptions (including framework-generated 404/405 responses), and unexpected failures. The exact status/code registry remains subject to team approval.
 
 ## 1. Goals
 

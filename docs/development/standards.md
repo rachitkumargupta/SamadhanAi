@@ -1,6 +1,6 @@
-# Development standards (proposed)
+# Development standards
 
-These lightweight standards apply when implementation begins. Tool choices remain pending and should be confirmed in ADR-001.
+These standards apply to ongoing development against the [master implementation blueprint](../architecture/implementation-blueprint.md). The repository already contains a partial backend starter; distinguish planned target work from implemented and verified behavior. Tool versions and CI choices remain pending; see [ADR-001](../decisions/ADR-001-technology-stack.md).
 
 ## Branches and reviews
 
