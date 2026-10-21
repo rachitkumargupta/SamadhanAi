@@ -1,6 +1,6 @@
 # Non-functional requirements
 
-**Status:** Draft for Team Kafka review<br>
+**Status:** Target quality requirements aligned to the supplied blueprint; measurable production targets remain pending.<br>
 **Related documents:** [PRD](PRD.md), [functional requirements](functional-requirements.md), [security design](../security/security-design.md)<br>
 **Version:** 0.1
 
@@ -23,8 +23,8 @@ Non-functional requirements (NFRs) describe the quality, safety, and operational
 | ID | Priority | Requirement | Acceptance / verification approach | Decisions needed |
 |---|---|---|---|---|
 | NFR-REL-01 | Must | A complaint registration and its required initial history record must succeed or fail atomically. | Failure-injection/database tests verify there is no reported success with a partial record. | Database and transaction strategy. |
-| NFR-REL-02 | Must | Retries of requests and external side effects must not create unintended duplicate records or actions. | Idempotency behavior is contract-tested for applicable writes and provider retries. | Key scope and retention, provider deduplication capabilities. |
-| NFR-REL-03 | Must | Provider or model failure must not corrupt complaint state or silently authorize a fallback decision. | Timeout, malformed-response, and outage tests verify safe failure, visible status, and manual handling path. | Outage operating procedure and recovery ownership. |
+| NFR-REL-02 | Must | Retries of requests, jobs, events, and external side effects must not create unintended duplicate logical records/actions. Repeatable complaint business events use a stable operation key with a database uniqueness constraint scoped by complaint and event type; jobs maintain separate retry/idempotency state. | Reprocessing the same logical SLA breach leaves one breach event and one logical escalation job/record; notification handlers deduplicate by source event and recipient/channel/template. If a provider outcome is unknown and provider-side deduplication is unavailable, record and reconcile that uncertainty rather than claim exactly-once delivery. Recovery reclaims expired leases and due work after restart in bounded batches, revalidates target state, reconciles pending verification/notification work, and exposes backlog, lag, retry, and terminal-failure signals. | Physical key representation/retention, provider idempotency support, scheduler/claim design, operational thresholds, and reconciliation procedure. |
+| NFR-REL-03 | Must | Model/provider failure must not corrupt or lose an already persisted complaint or silently authorize a fallback decision. | Async job failure/retry/recovery leaves the complaint available for manual handling. | Outage procedure and recovery owner. |
 | NFR-REL-04 | Must | Concurrent updates must preserve lifecycle invariants and expose conflicts. | Concurrent transition tests demonstrate conflict detection or safe serialization; no silent lost update occurs. | Optimistic/pessimistic concurrency mechanism and client conflict UX. |
 | NFR-REL-05 | Must | The service must have defined backup, restore, and recovery objectives before production use. | Restore rehearsal demonstrates agreed recovery point and recovery time objectives. | RPO, RTO, backup frequency, retention, owner, and hosting. |
 
@@ -33,11 +33,12 @@ Non-functional requirements (NFRs) describe the quality, safety, and operational
 | ID | Priority | Requirement | Acceptance / verification approach | Decisions needed |
 |---|---|---|---|---|
 | NFR-PERF-01 | Must | User-facing API response-time objectives must be defined for normal and peak load. | Load tests against representative workload meet approved p95/p99 targets by endpoint class. | Expected concurrent users, request rates, payload sizes, and target latency. |
-| NFR-PERF-02 | Must | Complaint submission and tracking should remain usable when AI or notification providers are slow or unavailable. | Dependency delay/failure tests show bounded request time and the agreed degraded behavior. | Whether analysis is synchronous, queue/worker design, intake acknowledgment semantics. |
+| NFR-PERF-02 | Must | Complaint submission must persist the report and durable analysis job before asynchronous AI work; submission and tracking remain usable during model/notification outages. | Provider latency does not hold the intake transaction open; the report is acknowledged in its initial processing state and later job failure is visible/recoverable. | Durable job implementation and intake acknowledgment fields. |
 | NFR-PERF-03 | Should | Long-running analysis, monitoring, and integration tasks must have explicit time, concurrency, and resource limits. | Load tests and operational limits prevent unbounded work and protect core API capacity. | Expected AI volume, model limits/cost budget, scheduling needs. |
 | NFR-PERF-04 | TBD | The system should support the expected complaint, attachment, and audit-history growth for the agreed retention period. | Capacity estimate and representative storage/load test confirm adequate indexes and storage. | Launch volume, growth, attachment profile, retention and deletion rules. |
+| NFR-PERF-05 | Must | Deterministic SLA processing must scale to at least the blueprint review scenario of 10,000 active tickets without per-ticket LLM timestamp comparisons. | Load/scale acceptance demonstrates indexed batch selection, safe claims, state/deadline revalidation, idempotent breach events, and acceptable scheduler lag. | Deployment capacity and approved scheduler-lag target. |
 
-No numeric traffic or latency target is asserted in this draft. Record targets and workload assumptions here or in an approved service-level document before a release candidate.
+No numeric API latency or scheduler-lag objective is asserted yet. Record targets and workload assumptions here or in an approved service-level document before a release candidate. The 10,000-active-ticket scale scenario is a required test case, not a complete capacity guarantee.
 
 ## Availability and operability
 
@@ -76,6 +77,10 @@ No numeric traffic or latency target is asserted in this draft. Record targets a
 | NFR-AI-03 | Must | AI assistance must have a defined manual fallback for unavailable, low-confidence, or disallowed outputs. | Scenario tests show staff can complete the lifecycle without an AI response; fallback workload is understood. | Review queue ownership, confidence/review rules. |
 | NFR-AI-04 | Must | AI quality must be evaluated on approved representative data before material release or model/prompt changes. | Evaluation protocol, data governance, thresholds, regression suite, and review sign-off are documented. | Dataset owner, quality metrics, fairness/impact review, release authority. |
 | NFR-AI-05 | Should | AI prompts/context should use the minimum data required for the task and avoid unnecessary personal information. | Context inspection and privacy review confirm minimization and appropriate provider configuration. | Provider terms, data region, retention/training policy. |
+
+## Operational metrics
+
+The demonstration/operations view should track, with privacy-aware aggregation: submission-to-analysis time; routing accuracy and human-review rate; assignment/rejection rates; overdue ticket count; scheduler lag and recovery time; failed/retried events; duplicate escalation attempts; citizen confirmation/dispute rates; verification/audit queue duration; and SLA compliance by department and jurisdiction. Metric owners, definitions, access scope, and retention need approval.
 
 ## Release readiness checklist for NFR decisions
 

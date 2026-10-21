@@ -1,6 +1,6 @@
-# Backend (first vertical slice)
+# Backend (initial citizen intake/tracking slice)
 
-This backend currently covers citizen complaint intake and owner-scoped tracking. It is a first implementation slice, not the complete MVP. Staff roles, classification, routing, assignment, SLA monitoring, notifications, attachments, and AI are not implemented.
+This is a partial implementation, not the target MVP. It currently supports text-only authenticated citizen intake and owner-scoped tracking. The supplied blueprint targets required image intake, GPS/manual location, asynchronous analysis, validated routing, parent/child work, deterministic SLA processing, event-triggered escalation, notification records, staff workflows, and citizen verification; these are not implemented here.
 
 ## Provisional choices
 
@@ -8,9 +8,9 @@ This backend currently covers citizen complaint intake and owner-scoped tracking
 - FastAPI for HTTP
 - PostgreSQL through SQLAlchemy 2.x and psycopg
 - Alembic for schema migrations
-- Externally issued HS256 JWTs for citizen authentication
+- Externally issued HS256 JWTs for the current citizen routes (anonymous submission/tracking is target project policy but is not implemented in this backend slice)
 
-These choices follow the proposed stack and should be confirmed by Team Kafka. The API verifies tokens but does not issue them or connect to an identity provider. A real issuer must use the configured secret, issuer, audience, and `role=citizen` claim. Do not use placeholder values outside local setup.
+The starter uses the listed Python stack. The target blueprint recommends PostgreSQL/pgvector, LangGraph, a provider-independent vision/language adapter, private object storage, and a durable scheduled Python worker. These target integrations are not present. The current API verifies tokens but does not issue them or connect to an identity provider. A real issuer must use the configured secret, issuer, audience, and `role=citizen` claim. Do not use placeholder values outside local setup.
 
 ## Configuration
 
@@ -38,6 +38,12 @@ The user must obtain a valid token from an approved issuer before calling protec
 - `GET /api/v1/complaints/{public_reference}/events` — retrieve citizen-visible history only.
 - `GET /health/live` — process liveness only.
 
+These routes do not yet implement the image-first or staff workflow specified by the target blueprint. An image is a required input in the target; the current route instead accepts text and optional location and does not accept media.
+
 The submission currently accepts a description and optional location text. Product owners must confirm required fields and location/privacy policy before a pilot. Creation and initial audit event are committed in one database transaction.
 
-The candidate lifecycle state machine is isolated in `backend/app/domain/lifecycle.py`; an internal transition service persists state and its audit event atomically. Neither is wired to an HTTP endpoint. Their role names and rules mirror the draft lifecycle document and require team approval before use. Assignment ownership, jurisdiction, and verification policy checks are not implemented by this module.
+Each complaint event stores the request correlation ID when one is available. The API validates or generates this ID and returns it in the `X-Correlation-ID` response header, allowing support staff to relate an audit event to request logs. Existing events remain valid with a null correlation ID.
+
+Application-raised errors, request validation failures, and framework-generated HTTP errors use the shared safe error envelope with a correlation ID. Unknown paths and unsupported methods therefore have the same response shape as other HTTP errors.
+
+The candidate lifecycle state machine is isolated in `backend/app/domain/lifecycle.py`; an internal transition service persists state and its audit event atomically. It does not yet match the blueprint's complete proposed states, parent/child rules, independent SLA state, 48-hour verification/dispute flow, or independent review. It is not wired to an HTTP endpoint and must not be treated as approved policy. See [target lifecycle](../docs/architecture/complaint-lifecycle.md) and [roadmap](../docs/planning/roadmap.md).

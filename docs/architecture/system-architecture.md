@@ -1,141 +1,90 @@
 # Samadhan AI system architecture
 
-**Status:** Proposed; pending Team Kafka approval<br>
-**Scope:** Logical architecture and initial deployment shape. This is not an as-built diagram; only the first complaint intake/tracking backend slice has been scaffolded.
+**Status:** Target architecture aligned to the supplied blueprint; not an as-built diagram.<br>
+**Implementation status:** Only a preliminary text-based citizen intake/tracking slice exists. See [backend README](../../backend/README.md).<br>
+**Master reference:** [Implementation blueprint](implementation-blueprint.md)
 
-## 1. Architecture goals
+## Architecture principle
 
-- Support the MVP complaint lifecycle as one understandable, auditable system.
-- Keep policy, permissions, and state transitions under application control.
-- Let AI analyze and recommend through versioned, validated interfaces.
-- Keep external providers replaceable and failure-contained.
-- Preserve the option to scale or separate components when actual workload or ownership needs justify it.
+AI-assisted interpretation with deterministic operational control and human accountability. Keep the initial deployment a modular monolith: FastAPI API, application/domain services, three-agent orchestration/harness, PostgreSQL persistence, and a scheduled Python worker as deployment allows. Do not make the logical layers separate services by default.
 
-## 2. System context
+## Logical architecture
+
+| Layer | Responsibilities | Target technology direction |
+|---|---|---|
+| User interfaces | Citizen portal; officer dashboard; admin/independent-review dashboard | React with JavaScript |
+| API/security | API, OpenAPI, Pydantic validation, JWT, RBAC and department/jurisdiction scope, rate limits, controlled uploads | FastAPI, Pydantic |
+| Application/domain | Authorization, state machine, ticket parent/child behavior, assignment, SLA policies, transactions, audit and notifications | Python modular application; SQLAlchemy |
+| Agent orchestration | Durable async workflow and human review/handoffs for exactly three agents | LangGraph target; PostgreSQL persistence where appropriate |
+| Agent harness | Typed schemas/tools, permissions, budgets, timeout/retry, guardrails, run records | Shared constrained application component |
+| Context and policy | Departments, wards, jurisdiction rules, SLA/escalation hierarchy, resolution policy and source metadata | PostgreSQL; pgvector for approved policy retrieval |
+| Integrations | Private image/evidence object storage, model adapter, in-app notifications, optional email/MCP or municipal adapters | Provider interfaces; scoped credentials |
+| Persistence and operations | Complaints, child tickets, events, jobs, assignments, SLAs, notifications, audit, agent runs, recovery | PostgreSQL plus scheduled worker; durable jobs/events |
+
+Technology table reflects recommendations in the supplied blueprint. Concrete versions, hosting, providers, object storage, scheduler/job claiming, and notification channels remain to be chosen and verified. PostgreSQL/pgvector and LangGraph are target recommendations; do not claim integration until implemented.
+
+## Container view
 
 ```mermaid
 flowchart LR
-    Citizen[Citizen]
-    Officer[Officer / supervisor]
-    Admin[System or policy administrator]
-    Samadhan[Samadhan AI application]
-    Model[Approved model provider TBD]
-    Notify[Approved notification provider TBD]
-    Authority[Authority system, if approved and available]
-    Citizen -->|Submit and track own reports| Samadhan
-    Officer -->|Review, assign, update, verify| Samadhan
-    Admin -->|Manage scoped access and approved reference data| Samadhan
-    Samadhan <-->|Bounded request and structured response| Model
-    Samadhan -->|Delivery requests and outcomes| Notify
-    Samadhan <-->|Explicit approved API contract only| Authority
+  Citizen[Citizen portal] --> API[FastAPI API and security]
+  Staff[Officer, admin, independent review] --> API
+  API --> App[Application services and deterministic domain rules]
+  App --> DB[(PostgreSQL)]
+  App --> Jobs[(Durable jobs and events)]
+  Jobs --> Worker[Scheduled Python worker]
+  Worker --> App
+  App --> Harness[Shared agent harness / LangGraph]
+  Harness --> Analyst[Complaint Analyst]
+  Harness --> Router[Resolution & Routing]
+  Harness --> Escalation[Monitoring & Escalation]
+  Harness --> Model[Approved image/language model adapter]
+  App --> Objects[Private object storage]
+  App --> Notify[In-app notification records]
+  Notify -. optional .-> Email[Approved email provider]
 ```
 
-The model, notification provider, and authority system are possible external dependencies, not confirmed integrations. There is no evidence that an authority API or sandbox is available. The reference presentation was not found during the workspace audit; this view is based on the supplied project brief.
+The database is not itself a scheduler. Job state and SLA processing must survive process restarts; a free hosting plan that sleeps cannot promise continuous monitoring, so overdue work must be recovered and deployment claims must match actual platform behavior.
 
-## 3. Proposed eight-layer architecture
+## Core data flows
 
-These are logical responsibilities. They do not require eight processes, repositories, or separately deployed services.
+### Submission and analysis
 
-| Layer | Responsibility | Initial placement | Boundary and controls |
-|---|---|---|---|
-| 1. User layer | Citizen application, officer dashboard, administrator dashboard | Frontend client(s), implementation stack pending | Treat all client input as untrusted; render only API-authorized fields. Frontend language proposal is JavaScript unless team explicitly changes it. |
-| 2. API and security | HTTP API, authentication, authorization/RBAC, input validation, throttling, safe errors | Backend API module | Enforce identity, resource scope, and action permission for every request; never rely on UI restrictions. |
-| 3. AI orchestration | Workflow state, handoff, bounded retries/timeouts, review pause/resume, failure recovery | Backend AI module initially | Coordinates agent interfaces but cannot override domain policies. LangGraph remains proposed pending need/approval. |
-| 4. AI agents | Complaint Analyst, Resolution and Routing, Monitoring and Escalation | Agent implementations behind internal interfaces initially | Return typed recommendations. No direct database writes, unrestricted tools, or invented policy data. |
-| 5. Agent harness / execution control | Shared invocation context, tool registry, permissions, schemas, guardrails, budgets, logs, review gates | Backend AI module/library initially | Allowlisted typed tools, minimal context, output validation, correlation/audit, explicit human review. |
-| 6. Context and knowledge | Approved policies, department/jurisdiction references, SLA rules, procedures; retrieval where justified | Application services and relational reference data initially | Authoritative policy sources and versions required. RAG/vector search is optional; no pgvector decision yet. |
-| 7. Agentic tools and integration | Notifications, authority-system adapters, optional MCP integrations | Backend adapter modules; separate worker only if justified | Explicit allowlist, scoped credentials, destination control, timeout, retry, idempotency, and normalized failure outcomes. MCP is optional, not needed for internal method calls. |
-| 8. Data | Users, complaints, assignments, policy/reference records, events/audit, notifications, AI runs, knowledge metadata | One transactional relational database proposed | PostgreSQL is proposed but not approved/installed. Database access stays behind application persistence boundaries. Vector storage is not assumed. |
+1. Frontend collects a required image, optional text, and location through explicit GPS permission or manual map selection.
+2. API validates decoded image content, dimensions/limits, request fields, and access policy; safely normalizes media and stores it privately.
+3. In a durable transaction/workflow, persist complaint, media reference, initial event, and analysis job before calling a model. Return a reference and initial processing state.
+4. Complaint Analyst asynchronously returns structured, grounded findings. Validate them and store agent/model/schema provenance. AI errors leave complaint available for retry or human review.
+5. If location is absent/uncertain, preserve the report for location review. Resolve jurisdiction from configured boundaries, never from the image.
 
-## 4. Initial component/container view
+### Routing and composite work
 
-```mermaid
-flowchart TB
-    subgraph Users[Layer 1: user clients]
-        CitizenUI[Citizen interface]
-        StaffUI[Officer and administrator interface]
-    end
-    subgraph Backend[Layers 2-7: one backend deployment initially]
-        API[API routes and request/response schemas]
-        Security[Authentication and authorization]
-        Services[Application services and lifecycle rules]
-        Domain[Complaint and policy domain model]
-        AI[Orchestration, agent contracts, execution controls]
-        Integrations[Notification and authority adapters]
-        Persistence[Repositories and transaction boundary]
-        Audit[Audit and operational logging]
-        API --> Security
-        API --> Services
-        Services --> Domain
-        Services --> Persistence
-        Services --> AI
-        Services --> Integrations
-        Services --> Audit
-        AI --> Integrations
-        AI --> Audit
-    end
-    DB[(Layer 8: relational database proposed)]
-    LLM[Approved model provider TBD]
-    Providers[Notification or authority providers TBD]
-    CitizenUI --> API
-    StaffUI --> API
-    Persistence --> DB
-    AI --> LLM
-    Integrations --> Providers
-```
+1. Resolution & Routing receives validated analysis and approved, versioned department/jurisdiction/officer/SLA references.
+2. It proposes one or more assignments and a policy reference; deterministic application checks eligibility, effective dates, workload constraints and current complaint version.
+3. Create one assigned ticket or a parent with independent child tickets for multiple departments. Conflict, missing reference, or uncertainty enters human review. Rejection requires a reason and repeated conflicts cannot bounce indefinitely.
 
-The diagram shows logical calls, not a finalized technology or process topology. In particular, whether notification dispatch and scheduled monitoring run inline or through a background worker remains open.
+### SLA, escalation, resolution
 
-## 5. Core request and data flows
+1. Persist each child ticket's effective SLA policy/version and deadline.
+2. Scheduled deterministic worker claims due records in indexed batches, rechecks state/deadline, and writes idempotent warning/breach events. It recovers overdue work after downtime; no per-ticket LLM polling.
+3. A valid escalation event can invoke Monitoring & Escalation. Backend checks the recommended authority/action before persisting and notifying.
+4. Officer submits category-appropriate resolution evidence; the citizen is notified and receives a proof card with confirm/dispute actions. Confirmation triggers authorized normal closure; a dispute enters the assigned Independent Reviewer queue. At 48 hours without response, send a reminder and keep pending; silence is never confirmation. Under the intended project policy, no response within seven calendar days routes the case to an Independent Reviewer for a reasoned decision; deadline timezone and recovery details are specified in the lifecycle/schema plan. Parent completion reflects child verification. Exceptional parent closure requires a separately authorized Senior Authority and audit event.
 
-### Complaint submission
+### Policy retrieval (RAG)
 
-1. Client sends a request over the approved authenticated or anonymous access path.
-2. API validates syntax and delegates to a complaint application service.
-3. Service applies domain rules, creates the complaint and initial event in a transaction, and generates a public reference.
-4. Optional analysis is invoked with the minimum approved context. Its result is schema-validated and stored as a proposal/run record.
-5. Service returns only the permitted acknowledgement fields. Notification attempts are tracked separately from the authoritative complaint transaction.
+1. Use source-linked policies for department responsibility, ward/jurisdiction mapping, category routing, SLA references, escalation hierarchy, and evidence requirements. Initial sample policies must be labelled demonstration-only, not official municipal policy.
+2. Retrieve relevant policy chunks from PostgreSQL/pgvector and filter by jurisdiction, department, effective date, and policy version.
+3. Give agents the minimum relevant snippets with source/version metadata; require structured recommendations that cite the supporting references.
+4. Backend verifies the references and all authorization, state, eligibility, and SLA rules deterministically. Retrieval informs a recommendation; it does not replace policy validation.
 
-### Routing and assignment
+## Trust and failure boundaries
 
-1. Service assembles validated complaint facts and approved, versioned reference data.
-2. Routing component proposes eligible destinations and policy references.
-3. Application verifies that each reference exists, is effective, and is allowed for the complaint and acting workflow.
-4. Authorized staff confirm or edit the proposed assignment, or the case enters an unassigned review queue.
-5. Assignment, policy reference, actor, reason, and resulting lifecycle event are persisted together.
+- Client input, images, retrieved policies, providers, and all model output are untrusted.
+- Model context is minimized; no real images are sent until provider/data terms are approved.
+- Agents have typed allowlisted tools and no direct database writes, arbitrary SQL, shell, or unrestricted network access.
+- Application code owns authorization, state transitions, assignment, SLA calculations, and external side-effect intent.
+- Provider, storage, worker, or notification failure must be visible and retry-safe without corrupting the authoritative complaint state.
+- See [AI agent contracts](ai-agent-architecture.md), [security design](../security/security-design.md), and [lifecycle](complaint-lifecycle.md).
 
-### Monitoring and closure
+## Open architecture decisions
 
-1. A scheduler or operator-triggered process evaluates current complaint timestamps against approved SLA rules.
-2. Monitoring produces a finding or action proposal; application checks policy and authorization.
-3. Escalation and notification intents/results are recorded with safe retry semantics.
-4. Officer submits resolution evidence; verification policy determines whether an authorized reviewer or citizen input is required.
-5. Only an allowed transition closes the complaint; event history and citizen notification reflect the actual decision.
-
-## 6. Agent interaction and human review
-
-The Complaint Analyst produces structured observations and uncertainty. The Resolution and Routing Agent can use only approved data to propose a destination and SLA reference. The Monitoring and Escalation Agent evaluates due-state facts and suggests permitted actions. The application orchestrates these interfaces and remains the authority for authorization, persistence, transition rules, and side effects.
-
-Human review is required whenever policy says so, inputs are ambiguous, reference data is missing or conflicting, output fails validation, confidence is outside an approved range, or an action is sensitive. The review queue must be an ordinary supported operational path, not merely a prompt instruction. For detailed contracts, see [AI agent architecture](ai-agent-architecture.md).
-
-## 7. Trust and security boundaries
-
-- **Client boundary:** browser/session and submitted data are untrusted; validate input and authorize every resource/action at the server.
-- **AI provider boundary:** send minimum necessary context; treat output as untrusted; validate schema and references; define provider retention, training, and data-region terms before selection.
-- **Integration boundary:** allowlist destinations and operations; use scoped credentials; validate responses; enforce timeouts, retries, and idempotency.
-- **Persistence boundary:** application services own transactions and domain invariants; agents cannot use unrestricted SQL or database credentials.
-- **Administrative boundary:** configuration and policy changes require specific permissions, provenance, versioning, and audit. See [security design](../security/security-design.md).
-
-## 8. Initial deployment topology
-
-**Proposal:** one backend application deployment, one relational database, and one frontend deployment. External model/notification/authority providers are connected only after selection and approval. Local development can begin with a developer-managed database once the stack is chosen. Avoid committing database dumps, real credentials, or citizen data.
-
-A background worker/scheduler may be added when asynchronous analysis, reliable deadline monitoring, or notification delivery needs prove it is necessary. If added, it should reuse application services and authorization rules, and use a durable job/outbox design appropriate to the selected database and deployment. A message broker, cache, vector database, Kubernetes, or service-per-layer topology has no documented requirement yet.
-
-## 9. Evolution and decision points
-
-Revisit deployment boundaries only when measured traffic, reliability isolation, independent ownership, security isolation, or provider constraints justify them. Review ADR-001 for technology selection and ADR-002 for the modular-monolith proposal. Before implementation, agree on identity, role scopes, lifecycle, authoritative policy data, SLA semantics, human review rules, provider data handling, and operations targets.
-
-## 10. Limitations
-
-This document is proposed architecture, not a diagram of deployed components. No framework, database, model, notification channel, external integration, hosting platform, or service-level objective has been verified or finalized. The project presentation must be made available before claiming its diagrams or future-scope details were reviewed.
+Approve the identity and anonymous tracking scheme; policies and official reference sources; object storage/scanning/retention; model/provider and data region; LangGraph persistence; worker scheduler/claim mechanism and hosting guarantees; notification channels; and production SLO, backup, RPO/RTO, and support ownership. Avoid extra infrastructure until deployment evidence warrants it.

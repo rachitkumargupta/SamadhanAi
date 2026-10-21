@@ -1,6 +1,7 @@
 # AI agent architecture and contracts
 
-**Status:** Proposed; no agents or orchestration code are implemented. This document defines interfaces and safety boundaries for later work.
+**Status:** Target architecture from the supplied blueprint; no agents or orchestration code are implemented. Exactly three core agents are planned.<br>
+**Related:** [Master implementation blueprint](implementation-blueprint.md)
 
 ## 1. Design rules
 
@@ -45,19 +46,19 @@ Do not accept free-form prose as the sole machine-readable decision. The final s
 
 ### Agent 1 — Complaint Analyst
 
-**Purpose:** help triage the reported issue and identify missing details.<br>
-**Inputs:** complaint text and only permitted structured details; approved category/severity/priority definitions; optionally allowed jurisdiction context.<br>
-**Proposed output:** extracted facts with source spans/references; candidate category; candidate severity/priority tied to approved definitions; missing-information questions; possible duplicate complaint references with evidence; uncertainty and review flags.<br>
-**Application checks:** validate taxonomy identifiers; preserve fact versus inference distinction; enforce prompt/data size limits; apply approved review thresholds; confirm duplicate references are accessible and never merge records automatically.<br>
-**Permitted tools:** read-only lookup against an approved taxonomy and, if approved, privacy-filtered candidate search.<br>
-**Forbidden actions:** edit complaint, request information directly, contact citizen, reject/merge/close reports, assign work, or claim facts absent from input.<br>
-**Human review:** required for uncertain classification, conflicting evidence, sensitive/high-impact category, proposed duplicate relationship, or policy-defined cases.
+**Purpose:** understand the image-first report and identify missing information.<br>
+**Inputs:** private image reference, optional citizen description, permitted location metadata, and minimum relevant context.<br>
+**Proposed output:** grounded description (generated when text is absent), visible evidence, category and severity/priority recommendations, uncertainty, missing/contradictory information, possible multi-department involvement, and human-review recommendation. Initial configurable categories are roads/potholes, garbage/sanitation, drainage/sewage, water/leakage, streetlights/electrical, damaged public infrastructure, and other/uncertain.<br>
+**Application checks:** validate schema/taxonomy, distinguish visible facts from inference, enforce size/time limits and review thresholds. Deterministic rules validate/adjust priority and handle emergency/safety-critical cases; these cases must not depend exclusively on model judgment. Do not infer cause, jurisdiction, or responsible department from an image alone.<br>
+**Permitted tools:** bounded image/model access and read-only approved taxonomy lookup.<br>
+**Forbidden actions:** edit complaint, request information directly, contact citizen, reject/merge/close, assign work, or claim facts absent from input. Duplicate detection is outside MVP.<br>
+**Human review:** required for unclear/unsafe images, uncertain classification, conflicting context, high-impact issue, or policy-defined cases.
 
 ### Agent 2 — Resolution and Routing Agent
 
 **Purpose:** propose an operational destination and next action using authorized reference data.<br>
-**Inputs:** validated analyst result, complaint location/jurisdiction signals, and an approved snapshot of department/team eligibility and SLA rules.<br>
-**Proposed output:** one or more candidate destinations identified by existing stable reference IDs; matching jurisdiction and eligibility evidence; applicable SLA rule ID/version; rationale; missing-reference and review flags.<br>
+**Inputs:** validated analyst result, complaint location/jurisdiction, approved department responsibility/routing policies, active officer eligibility, workload constraints, composite-ticket requirements, and approved SLA policies.<br>
+**Proposed output:** required next action; one or more proposed departments/officers for independent child work where needed; stable reference IDs and eligibility/policy evidence; proposed SLA rule IDs/versions; routing rationale, uncertainty, and review flags.<br>
 **Application checks:** every identifier must resolve to approved effective data; eligibility and actor permissions are checked again at application time; state/version is rechecked before assignment; an unmapped case enters the configured unassigned review queue.<br>
 **Permitted tools:** read-only search of approved department, jurisdiction, team/officer eligibility, and SLA references.<br>
 **Forbidden actions:** create or invent reference records, alter SLA values, commit an assignment, notify staff/citizens, or override authorization.<br>
@@ -65,13 +66,13 @@ Do not accept free-form prose as the sole machine-readable decision. The final s
 
 ### Agent 3 — Monitoring and Escalation Agent
 
-**Purpose:** identify delay/breach conditions and suggest permitted follow-up.<br>
-**Inputs:** current complaint state/timestamps, approved SLA clock result and rule version, escalation policy, and prior escalation/notification outcomes.<br>
-**Proposed output:** due/at-risk/breached finding; calculation inputs/references; candidate escalation action and recipient class from an allowlist; urgency and review flag.<br>
-**Application checks:** deterministic SLA calculation is authoritative; verify policy version and current state; deduplicate repeated findings/actions; authorize any dispatch or status mutation; record outcome.<br>
-**Permitted tools:** read-only access to monitoring facts and approved policy; may submit an escalation proposal through a typed application endpoint.<br>
-**Forbidden actions:** change SLA clocks or policy, alter complaint state, close complaint, select arbitrary recipients, or send unrestricted messages.<br>
-**Human review:** required for non-routine actions, policy ambiguity, disputed cases, or actions requiring supervisor authority.
+**Purpose:** reason about escalation after a deterministic breach/escalation event.<br>
+**Trigger:** a valid `SLA_BREACHED` or other explicitly configured escalation event. It never polls tickets or compares deadlines continuously.<br>
+**Inputs:** current ticket state/history, persisted deadline and SLA policy version, escalation hierarchy, and prior escalation/notification outcomes.<br>
+**Proposed output:** context-rich breach summary, explanation, next-authority recommendation, unresolved dependencies, missing context, and structured review flags.<br>
+**Application checks:** deterministic SLA calculation is authoritative; recheck policy/current state, deduplicate processing, validate target authority, authorize and persist any action, and record outcome.<br>
+**Forbidden actions:** change SLA clocks/policy, independently transition or close tickets, select arbitrary recipients, or send unrestricted messages.<br>
+**Human review:** required for missing escalation target, policy ambiguity, disputed cases, or actions requiring supervisory authority.
 
 ## 5. Orchestration and handoff
 
@@ -82,6 +83,7 @@ sequenceDiagram
     participant R as Routing Agent
     participant H as Authorized reviewer
     participant M as Monitoring Agent
+    participant W as Deterministic SLA worker
     participant D as Domain and policy services
     C->>A: Minimum authorized complaint context
     A-->>C: Versioned typed analysis proposal
@@ -95,13 +97,14 @@ sequenceDiagram
       C->>D: Recheck reference validity, state, and authorization
       D-->>C: Valid route or review/unassigned outcome
     end
-    M->>D: Read current due facts and approved escalation rules
-    D-->>M: Current state and policy version
-    M-->>C: Typed finding or escalation proposal
-    C->>D: Authorize, persist, and dispatch only permitted action
+    W->>D: Claim and revalidate persisted due ticket
+    D-->>W: Valid SLA_BREACHED event
+    W->>M: Invoke for this breach event only
+    M-->>C: Structured escalation recommendation
+    C->>D: Revalidate authority; persist and dispatch permitted action
 ```
 
-The orchestration layer may pause for a reviewer, resume from a recorded decision, or terminate safely. Whether this uses LangGraph or straightforward application code is pending ADR-001 and prototype evidence.
+The target orchestration uses LangGraph with PostgreSQL-backed state where appropriate, as recommended by the supplied blueprint. The provider/model and concrete deployment remain undecided. The complaint and its durable job must be persisted before asynchronous analysis begins. Orchestration may pause for a reviewer, resume from a recorded decision, and recover after process restart. Database writes and state transitions remain in application services.
 
 ## 6. Tool and execution controls
 
@@ -136,9 +139,9 @@ Before enabling an agent in a real workflow, define an approved evaluation datas
 
 ## 10. Open decisions
 
-- Whether any agent is included in the MVP or the first lifecycle is fully manual.
-- Agent framework/orchestrator and model provider, supported models, region, retention, and cost limits.
-- Category taxonomy and meanings of severity, priority, confidence, and duplicate candidate.
+- Model hosting, image data terms, region, retention, cost limits, and practical evaluation results.
+- LangGraph version and PostgreSQL workflow-persistence approach.
+- Category taxonomy and meanings of severity, priority, and confidence.
 - Which review conditions are mandatory and who owns each queue.
 - Permitted read-only lookups and any side-effect tools, including action-specific approval needs.
 - Run input/output retention, redaction, access, and audit detail.
