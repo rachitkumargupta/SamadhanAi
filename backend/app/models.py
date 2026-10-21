@@ -43,6 +43,7 @@ class ComplaintEvent(Base):
     previous_state: Mapped[str | None] = mapped_column(String(40), nullable=True)
     resulting_state: Mapped[str | None] = mapped_column(String(40), nullable=True)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    correlation_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     visibility: Mapped[str] = mapped_column(
         String(20), nullable=False, default="internal", server_default="internal"
     )

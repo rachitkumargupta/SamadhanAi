@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
 from sqlalchemy.orm import Session
 
 from backend.app.database import get_session
@@ -23,6 +23,7 @@ router = APIRouter(prefix="/api/v1/complaints", tags=["complaints"])
 
 @router.post("", response_model=ComplaintRead, status_code=status.HTTP_201_CREATED)
 def create_complaint(
+    request: Request,
     payload: ComplaintCreate,
     session: Session = Depends(get_session),
     actor: Actor = Depends(get_current_citizen),
@@ -31,6 +32,7 @@ def create_complaint(
         session,
         actor_subject=actor.subject,
         payload=payload,
+        correlation_id=request.state.correlation_id,
     )
     return ComplaintRead.model_validate(complaint)
 
@@ -38,7 +40,7 @@ def create_complaint(
 @router.get("", response_model=ComplaintListPage)
 def read_complaints(
     limit: int = Query(default=20, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
+    offset: int = Query(default=0, ge=0, le=10_000),
     session: Session = Depends(get_session),
     actor: Actor = Depends(get_current_citizen),
 ) -> ComplaintListPage:
@@ -58,7 +60,7 @@ def read_complaints(
 
 @router.get("/{public_reference}", response_model=ComplaintRead)
 def read_complaint(
-    public_reference: str,
+    public_reference: str = Path(max_length=32),
     session: Session = Depends(get_session),
     actor: Actor = Depends(get_current_citizen),
 ) -> ComplaintRead:
@@ -77,9 +79,9 @@ def read_complaint(
 
 @router.get("/{public_reference}/events", response_model=ComplaintEventPage)
 def read_complaint_events(
-    public_reference: str,
+    public_reference: str = Path(max_length=32),
     limit: int = Query(default=50, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
+    offset: int = Query(default=0, ge=0, le=10_000),
     session: Session = Depends(get_session),
     actor: Actor = Depends(get_current_citizen),
 ) -> ComplaintEventPage:

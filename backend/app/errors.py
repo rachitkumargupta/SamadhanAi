@@ -1,8 +1,9 @@
 import logging
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 
 logger = logging.getLogger(__name__)
@@ -33,26 +34,34 @@ def install_error_handlers(app: FastAPI) -> None:
                     "correlation_id": correlation_id(request),
                 }
             },
+            headers={"X-Correlation-ID": correlation_id(request)},
         )
 
-    @app.exception_handler(HTTPException)
-    async def http_error(request: Request, exc: HTTPException) -> JSONResponse:
+    @app.exception_handler(StarletteHTTPException)
+    async def http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         detail = exc.detail if isinstance(exc.detail, dict) else {}
+        request_id = correlation_id(request)
         error = {
             "code": str(detail.get("code", "request_rejected")),
             "message": str(detail.get("message", "The request could not be completed.")),
-            "correlation_id": correlation_id(request),
+            "correlation_id": request_id,
         }
+        headers = dict(exc.headers or {})
+        headers["X-Correlation-ID"] = request_id
         return JSONResponse(
             status_code=exc.status_code,
             content={"error": error},
-            headers=exc.headers,
+            headers=headers,
         )
 
     @app.exception_handler(Exception)
     async def unexpected_error(request: Request, exc: Exception) -> JSONResponse:
         request_id = correlation_id(request)
-        logger.exception("Unhandled request failure; correlation_id=%s", request_id)
+        logger.error(
+            "Unhandled request failure; correlation_id=%s error_type=%s",
+            request_id,
+            type(exc).__name__,
+        )
         return JSONResponse(
             status_code=500,
             content={
@@ -62,4 +71,5 @@ def install_error_handlers(app: FastAPI) -> None:
                     "correlation_id": request_id,
                 }
             },
+            headers={"X-Correlation-ID": request_id},
         )

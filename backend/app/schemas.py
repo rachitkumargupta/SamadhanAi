@@ -15,6 +15,8 @@ LocationText = Annotated[
 
 
 class ComplaintCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     description: ComplaintDescription
     location_text: LocationText | None = None
 
