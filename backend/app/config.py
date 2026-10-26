@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     complaint_analyst_policy_file: str | None = None
     complaint_media_storage_dir: str = "./private_media"
     complaint_analysis_worker_poll_seconds: float = Field(default=2.0, gt=0, le=60)
+        monitoring_escalation_model: str = "gpt-6-luna"
+    monitoring_escalation_timeout_seconds: float = Field(default=20.0, gt=0, le=60)
+    monitoring_worker_poll_seconds: float = Field(default=30.0, gt=0, le=300)
+    citizen_verification_window_hours: int = Field(default=168, gt=0, le=720)
 
     model_config = SettingsConfigDict(
         env_file=".env",
