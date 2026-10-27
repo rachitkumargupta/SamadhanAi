@@ -1,0 +1,115 @@
+{
+  "sla_rules": {
+    "drainage_sewage": {
+      "low": {
+        "response_minutes": 1440,
+        "resolution_minutes": 10080,
+        "policy_reference": "DEMO-DRAINAGE-LOW"
+      },
+      "medium": {
+        "response_minutes": 240,
+        "resolution_minutes": 4320,
+        "policy_reference": "DEMO-DRAINAGE-MEDIUM"
+      },
+      "high": {
+        "response_minutes": 60,
+        "resolution_minutes": 1440,
+        "policy_reference": "DEMO-DRAINAGE-HIGH"
+      },
+      "critical": {
+        "response_minutes": 15,
+        "resolution_minutes": 240,
+        "policy_reference": "DEMO-DRAINAGE-CRITICAL"
+      }
+    },
+    "streetlights_electrical": {
+      "low": {
+        "response_minutes": 1440,
+        "resolution_minutes": 10080,
+        "policy_reference": "DEMO-ELECTRICAL-LOW"
+      },
+      "medium": {
+        "response_minutes": 240,
+        "resolution_minutes": 1440,
+        "policy_reference": "DEMO-ELECTRICAL-MEDIUM"
+      },
+      "high": {
+        "response_minutes": 15,
+        "resolution_minutes": 240,
+        "policy_reference": "DEMO-ELECTRICAL-HIGH"
+      },
+      "critical": {
+        "response_minutes": 5,
+        "resolution_minutes": 60,
+        "policy_reference": "DEMO-ELECTRICAL-CRITICAL"
+      }
+    },
+    "road_damage": {
+      "medium": {
+        "response_minutes": 240,
+        "resolution_minutes": 4320,
+        "policy_reference": "DEMO-ROAD-MEDIUM"
+      },
+      "high": {
+        "response_minutes": 60,
+        "resolution_minutes": 1440,
+        "policy_reference": "DEMO-ROAD-HIGH"
+      },
+      "critical": {
+        "response_minutes": 15,
+        "resolution_minutes": 240,
+        "policy_reference": "DEMO-ROAD-CRITICAL"
+      }
+    },
+    "waste_management": {
+      "low": {
+        "response_minutes": 1440,
+        "resolution_minutes": 4320,
+        "policy_reference": "DEMO-WASTE-LOW"
+      },
+      "medium": {
+        "response_minutes": 240,
+        "resolution_minutes": 1440,
+        "policy_reference": "DEMO-WASTE-MEDIUM"
+      },
+      "high": {
+        "response_minutes": 60,
+        "resolution_minutes": 480,
+        "policy_reference": "DEMO-WASTE-HIGH"
+      }
+    },
+    "water_supply": {
+      "low": {
+        "response_minutes": 1440,
+        "resolution_minutes": 4320,
+        "policy_reference": "DEMO-WATER-LOW"
+      },
+      "medium": {
+        "response_minutes": 240,
+        "resolution_minutes": 1440,
+        "policy_reference": "DEMO-WATER-MEDIUM"
+      },
+      "high": {
+        "response_minutes": 60,
+        "resolution_minutes": 480,
+        "policy_reference": "DEMO-WATER-HIGH"
+      },
+      "critical": {
+        "response_minutes": 15,
+        "resolution_minutes": 240,
+        "policy_reference": "DEMO-WATER-CRITICAL"
+      }
+    }
+  },
+  "human_review_policy": {
+    "enabled": true,
+    "unknown_category_requires_review": true,
+    "low_confidence_threshold": 0.7,
+    "missing_evidence_requires_review": true,
+    "unverified_department_requires_review": true,
+    "unclear_jurisdiction_requires_review": true,
+    "unconfirmed_electrical_hazard_requires_review": true,
+    "unclassified_sla_minutes": null,
+    "policy_reference": "DEMO-HUMAN-REVIEW"
+  }
+}
