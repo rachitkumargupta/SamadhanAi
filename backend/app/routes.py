@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, Query, Request, Response, UploadFile, status
@@ -29,6 +30,8 @@ from backend.app.agents.monitoring_escalation import (
     build_monitoring_escalation_agent,
 )
 from backend.app.models import (
+    Complaint,
+    ComplaintAnalysis,
     MonitoringAuthority,
     MonitoringCase,
     MonitoringEvent,
@@ -51,6 +54,31 @@ from backend.app.config import get_settings
 router = APIRouter(prefix="/api/v1/complaints", tags=["complaints"])
 staff_router = APIRouter(prefix="/api/v1/staff/complaint-analysis", tags=["complaint-analysis-review"])
 monitoring_router = APIRouter(prefix="/api/v1/staff/monitoring", tags=["monitoring"])
+
+
+@staff_router.get("/complaints/{complaint_id}/routing-proposal")
+def read_agent2_routing_proposal(
+    complaint_id: UUID,
+    session: Session = Depends(get_session),
+    actor: Actor = Depends(get_current_analyst_reviewer),
+) -> dict[str, Any]:
+    """Return the separately saved Agent 2 proposal to authorized staff."""
+    complaint = session.get(Complaint, complaint_id)
+    if complaint is None:
+        raise HTTPException(status_code=404, detail="Complaint was not found.")
+
+    analysis = session.scalar(
+        select(ComplaintAnalysis)
+        .where(ComplaintAnalysis.complaint_id == complaint_id)
+        .order_by(ComplaintAnalysis.created_at.desc())
+        .limit(1)
+    )
+    if analysis is None or analysis.routing_proposal is None:
+        raise HTTPException(status_code=404, detail="Agent 2 routing proposal was not found.")
+    return {
+        "complaint_id": str(complaint.id),
+        "routing_proposal": analysis.routing_proposal,
+    }
 
 
 @monitoring_router.post("/escalation-jobs/{job_id}")

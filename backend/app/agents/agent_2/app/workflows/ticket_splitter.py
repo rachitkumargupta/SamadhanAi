@@ -1,5 +1,5 @@
 
-from app.schemas import ComplaintInput, ChildTaskProposal, DepartmentProposal
+from ..schemas import ComplaintInput, ChildTaskProposal, DepartmentProposal
 
 class TicketSplitter:
     """Split a complaint into proposed child tasks using structured issues."""

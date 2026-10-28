@@ -3,17 +3,17 @@ import json
 import logging
 from typing import Any
 
-from app.config import settings
-from app.schemas import (
+from ..config import settings
+from ..schemas import (
     ComplaintInput,
     RoutingProposal,
     PolicyEvidence,
     HazardFlag,
 )
-from app.rag.document_loader import load_policy_documents
-from app.rag.chunker import chunk_documents
-from app.rag.retriever_factory import create_policy_retriever
-from app.services.llm_service import LLMService
+from ..rag.document_loader import load_policy_documents
+from ..rag.chunker import chunk_documents
+from ..rag.retriever_factory import create_policy_retriever
+from ..services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
 

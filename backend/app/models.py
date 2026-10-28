@@ -160,6 +160,7 @@ class ComplaintAnalysis(Base):
     provider: Mapped[str] = mapped_column(String(80), nullable=False)
     model: Mapped[str] = mapped_column(String(160), nullable=False)
     result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    routing_proposal: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

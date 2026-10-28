@@ -1,18 +1,20 @@
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    ollama_api_key: str = "cd40ae9012274bb1be691cd205d7ab22.O4pWNZ5OhqUd644IOxzKddLy"
+    ollama_api_key: str = ""
     ollama_model: str = "beam:cloud"
     ollama_chat_url: str = "https://ollama.com/api/chat"
     llm_timeout_seconds: int = 120
 
-    voyage_api_key: str = "pa-WWHD8aBr1Gi-bf9_AagTmaZNN6Cd0MEXIbgyr3vDUy_"
+    voyage_api_key: str = ""
     embedding_model: str = "voyage-4-lite"
 
     database_url: str = ""
-    policy_directory: str = "policies"
+    policy_directory: str = str(Path(__file__).resolve().parents[1] / "policies")
     retrieval_top_k: int = 5
     retrieval_backend: str = "tfidf"
     classification_confidence_threshold: float = 0.70

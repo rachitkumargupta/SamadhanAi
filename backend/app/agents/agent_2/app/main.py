@@ -2,8 +2,8 @@
 import logging
 from fastapi import FastAPI, HTTPException
 from pydantic import ValidationError
-from app.schemas import ComplaintInput, RoutingProposal
-from app.workflows.workflow import ResolutionWorkflow
+from .schemas import ComplaintInput, RoutingProposal
+from .workflows.workflow import ResolutionWorkflow
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

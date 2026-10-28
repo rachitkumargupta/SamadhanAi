@@ -1,9 +1,9 @@
 
 from typing import Any
 
-from app.config import settings
-from app.rag.embeddings import EmbeddingService
-from app.rag.vector_store import VectorStore
+from ..config import settings
+from .embeddings import EmbeddingService
+from .vector_store import VectorStore
 
 
 class PgVectorRetriever:

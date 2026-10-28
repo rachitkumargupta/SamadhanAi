@@ -1,7 +1,7 @@
 
 from dataclasses import dataclass
 
-from app.rag.document_loader import PolicyDocument
+from .document_loader import PolicyDocument
 
 
 @dataclass

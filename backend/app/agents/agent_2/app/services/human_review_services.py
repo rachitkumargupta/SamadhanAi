@@ -1,6 +1,6 @@
 
 from dataclasses import dataclass, field
-from app.schemas import RoutingProposal
+from ..schemas import RoutingProposal
 
 @dataclass
 class HumanReviewDecision:

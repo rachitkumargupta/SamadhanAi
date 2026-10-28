@@ -1,6 +1,6 @@
 
-from app.rag.document_loader import load_policy_documents
-from app.rag.chunker import chunk_documents
+from backend.app.agents.agent_2.app.rag.document_loader import load_policy_documents
+from backend.app.agents.agent_2.app.rag.chunker import chunk_documents
 
 
 documents = load_policy_documents("policies")

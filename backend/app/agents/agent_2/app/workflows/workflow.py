@@ -1,10 +1,10 @@
 \
-from app.agents.routing_agents import RoutingAgent
-from app.schemas import ComplaintInput, RoutingProposal
-from app.services.human_review_services import HumanReviewService
-from app.services.severity_services import SeverityService
-from app.services.sla_services import SLAService
-from app.workflows.ticket_splitter import TicketSplitter
+from ..agents.routing_agents import RoutingAgent
+from ..schemas import ComplaintInput, RoutingProposal
+from ..services.human_review_services import HumanReviewService
+from ..services.severity_services import SeverityService
+from ..services.sla_services import SLAService
+from .ticket_splitter import TicketSplitter
 
 class ResolutionWorkflow:
     """Coordinate routing, severity, SLA assessment, and human review."""

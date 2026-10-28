@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from io import BytesIO
 from pathlib import Path
+from uuid import uuid4
 from unittest.mock import patch
 
 os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
@@ -23,11 +24,12 @@ from backend.app.agents.complaint_analyst import (
     IssueCategory,
     RecommendationLevel,
 )
+from backend.app.agents.agent_2.app.schemas import RoutingProposal
 from backend.app.config import Settings
 from backend.app.database import Base, get_session
 from backend.app.main import app
 from backend.app.models import BackgroundJob
-from backend.app.security import Actor, get_current_citizen
+from backend.app.security import Actor, get_current_analyst_reviewer, get_current_citizen
 from backend.app.storage import PrivateLocalMediaStore
 from backend.app.workers.complaint_analysis_worker import ComplaintAnalysisWorker
 from test_complaint_analysis_workflow import StubAnalyst
@@ -74,16 +76,23 @@ class ComplaintAnalysisApiTests(unittest.TestCase):
         Image.new("RGB", (12, 12), color="gray").save(output, format="PNG")
         return output.getvalue()
 
+    class StubResolutionWorkflow:
+        def run(self, complaint):
+            return RoutingProposal(
+                complaint_id=complaint.complaint_id,
+                parent_task_title="Test routing proposal",
+            )
+
     def test_multipart_intake_queues_job_and_status_endpoint_returns_saved_result(self):
         with patch("backend.app.routes.get_settings", return_value=self.settings):
             response = self.client.post(
                 "/api/v1/complaints",
                 files={"image": ("issue.png", self.image_upload(), "image/png")},
-                data={"location_text": "Ward 4"},
+                data={"description": "Test road complaint.", "location_text": "Ward 4"},
             )
         self.assertEqual(response.status_code, 201, response.text)
         submitted = response.json()
-        self.assertIsNone(submitted["description"])
+        self.assertEqual(submitted["description"], "Test road complaint.")
         self.assertEqual(submitted["analysis_status"], "pending")
 
         with self.sessions() as session:
@@ -114,6 +123,7 @@ class ComplaintAnalysisApiTests(unittest.TestCase):
             media_store=PrivateLocalMediaStore(self.settings.complaint_media_storage_dir),
             analyst_factory=lambda: StubAnalyst(result=result),
             settings=self.settings,
+            resolution_workflow_factory=self.StubResolutionWorkflow,
             worker_id="api-test-worker",
         )
         self.assertTrue(worker.process_one())
@@ -130,6 +140,26 @@ class ComplaintAnalysisApiTests(unittest.TestCase):
         self.assertEqual(body["status"], "succeeded")
         self.assertIsNotNone(body["run_id"])
         self.assertEqual(body["result"]["category"], IssueCategory.ROADS_POTHOLES.value)
+        self.assertNotIn("routing_proposal", body)
+
+        proposal_path = (
+            f"/api/v1/staff/complaint-analysis/complaints/{complaint_id}/routing-proposal"
+        )
+        unauthenticated_response = self.client.get(proposal_path)
+        self.assertEqual(unauthenticated_response.status_code, 401)
+        app.dependency_overrides[get_current_analyst_reviewer] = lambda: Actor(
+            subject="staff-api-test", role="staff"
+        )
+        proposal_response = self.client.get(proposal_path)
+        self.assertEqual(proposal_response.status_code, 200, proposal_response.text)
+        self.assertEqual(
+            proposal_response.json()["routing_proposal"]["parent_task_title"],
+            "Test routing proposal",
+        )
+        missing_proposal = self.client.get(
+            f"/api/v1/staff/complaint-analysis/complaints/{uuid4()}/routing-proposal"
+        )
+        self.assertEqual(missing_proposal.status_code, 404)
         app.dependency_overrides[get_current_citizen] = lambda: Actor(
             subject="another-citizen", role="citizen"
         )

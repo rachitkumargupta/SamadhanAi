@@ -23,8 +23,10 @@ from backend.app.agents.complaint_analyst import (
     ComplaintAnalyst,
     build_complaint_analyst,
 )
+from backend.app.agents.agent_2_adapter import run_agent2_for_analysis
 from backend.app.config import Settings, get_settings
 from backend.app.database import SessionLocal
+from backend.app.monitoring import register_monitoring_case
 from backend.app.models import (
     AgentRun,
     BackgroundJob,
@@ -52,11 +54,18 @@ class ComplaintAnalysisWorker:
         media_store: PrivateLocalMediaStore,
         analyst_factory: Callable[[], ComplaintAnalyst],
         settings: Settings,
+        resolution_workflow_factory: Callable[[], object] | None = None,
+        accepted_assignment_provider: Callable[
+            [Session, UUID, str, str, dict], dict[str, object] | None
+        ] | None = None,
         worker_id: str | None = None,
     ):
         self._session_factory = session_factory
         self._media_store = media_store
         self._analyst_factory = analyst_factory
+        self._resolution_workflow_factory = resolution_workflow_factory
+        # No real assignment/SLA source exists yet; the default remains disabled.
+        self._accepted_assignment_provider = accepted_assignment_provider
         self._settings = settings
         self._worker_id = worker_id or f"{socket.gethostname()[:80]}:{uuid4().hex[:12]}"
 
@@ -162,6 +171,9 @@ class ComplaintAnalysisWorker:
             session.add(run)
             session.commit()
             run_id = run.id
+            complaint_id = complaint.id
+            complaint_reference = complaint.public_reference
+            owner_subject = complaint.owner_subject
             object_key = media.object_key
             expected_size = media.size_bytes
             expected_sha256 = media.sha256
@@ -190,6 +202,7 @@ class ComplaintAnalysisWorker:
             return True
 
         now = utc_now()
+        analysis_result = result.model_dump(mode="json")
         with self._session_factory() as session:
             job = session.get(BackgroundJob, job_id)
             run = session.get(AgentRun, run_id)
@@ -197,23 +210,82 @@ class ComplaintAnalysisWorker:
                 return True
             run.status = "completed"
             run.completed_at = now
-            session.add(
-                ComplaintAnalysis(
-                    complaint_id=job.complaint_id,
-                    media_id=job.media_id,
-                    agent_run_id=run.id,
-                    schema_version=result.schema_version,
-                    provider="openai",
-                    model=self._settings.complaint_analyst_model,
-                    result=result.model_dump(mode="json"),
-                )
+            analysis = ComplaintAnalysis(
+                complaint_id=job.complaint_id,
+                media_id=job.media_id,
+                agent_run_id=run.id,
+                schema_version=result.schema_version,
+                provider="openai",
+                model=self._settings.complaint_analyst_model,
+                result=analysis_result,
             )
+            session.add(analysis)
+            session.flush()
+            analysis_id = analysis.id
             job.status = "succeeded"
             job.lease_owner = None
             job.lease_expires_at = None
             job.completed_at = now
             job.error_code = None
             session.commit()
+
+        try:
+            proposal = run_agent2_for_analysis(
+                complaint_id=complaint_id,
+                complaint_text=description,
+                location_text=location_text,
+                analysis_result=analysis_result,
+                workflow_factory=self._resolution_workflow_factory,
+            )
+            proposal_data = proposal.model_dump(mode="json")
+            with self._session_factory() as session:
+                saved_analysis = session.get(ComplaintAnalysis, analysis_id)
+                if saved_analysis is None:
+                    raise RuntimeError("Saved Agent 1 analysis was not found for Agent 2 result.")
+                saved_analysis.routing_proposal = proposal_data
+                session.commit()
+            logger.info(
+                "Agent 2 proposal generated complaint_id=%s child_task_count=%s human_review=%s",
+                complaint_id,
+                len(proposal.child_tasks),
+                proposal.requires_human_review,
+            )
+        except Exception as exc:
+            # Agent 1 is already committed successfully; Agent 2 must not undo it.
+            logger.warning(
+                "Agent 2 routing proposal failed complaint_id=%s error_type=%s",
+                complaint_id,
+                type(exc).__name__,
+            )
+            return True
+
+        if self._accepted_assignment_provider is not None:
+            try:
+                with self._session_factory() as session:
+                    # The provider must return only an already accepted assignment
+                    # paired with its authoritative absolute SLA deadline.
+                    assignment = self._accepted_assignment_provider(
+                        session,
+                        complaint_id,
+                        complaint_reference,
+                        owner_subject,
+                        proposal_data,
+                    )
+                    if assignment is not None:
+                        register_monitoring_case(
+                            session,
+                            complaint_id=complaint_id,
+                            complaint_reference=complaint_reference,
+                            **assignment,
+                        )
+                        session.commit()
+                        logger.info("Agent 3 monitoring case registered complaint_id=%s", complaint_id)
+            except Exception as exc:
+                logger.warning(
+                    "Agent 3 monitoring registration failed complaint_id=%s error_type=%s",
+                    complaint_id,
+                    type(exc).__name__,
+                )
         return True
 
     def _finish_failure(

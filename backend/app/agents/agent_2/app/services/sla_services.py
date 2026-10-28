@@ -1,6 +1,6 @@
 
 from dataclasses import dataclass
-from app.schemas import PolicyEvidence
+from ..schemas import PolicyEvidence
 
 @dataclass
 class SLAAssessment:

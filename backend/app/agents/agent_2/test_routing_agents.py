@@ -1,6 +1,6 @@
 
-from app.agents.routing_agents import RoutingAgent
-from app.schemas import ComplaintInput, ComplaintIssue
+from backend.app.agents.agent_2.app.agents.routing_agents import RoutingAgent
+from backend.app.agents.agent_2.app.schemas import ComplaintInput, ComplaintIssue
 
 
 def main():

@@ -1,6 +1,6 @@
 
 import requests
-from app.config import settings
+from ..config import settings
 class LLMService:
     """Client for the hosted Ollama Cloud chat API."""
     def __init__(self) -> None:

@@ -1,7 +1,7 @@
 
-from app.rag.document_loader import PolicyDocument
-from app.rag.chunker import chunk_documents
-from app.rag.policy_retriever import PolicyRetriever
+from backend.app.agents.agent_2.app.rag.document_loader import PolicyDocument
+from backend.app.agents.agent_2.app.rag.chunker import chunk_documents
+from backend.app.agents.agent_2.app.rag.policy_retriever import PolicyRetriever
 
 
 # Temporary test data only — NOT an official municipal policy.

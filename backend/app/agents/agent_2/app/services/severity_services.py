@@ -1,5 +1,5 @@
 
-from app.schemas import SeverityLevel
+from ..schemas import SeverityLevel
 
 class SeverityService:
     """Assess complaint severity using explicit safety and impact indicators."""

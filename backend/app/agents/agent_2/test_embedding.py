@@ -1,6 +1,6 @@
 
-from app.config import settings
-from app.rag.embeddings import EmbeddingService
+from backend.app.agents.agent_2.app.config import settings
+from backend.app.agents.agent_2.app.rag.embeddings import EmbeddingService
 
 
 def main() -> None:
