@@ -66,10 +66,6 @@ def process_monitoring_escalation_job(
     )
     if job is None or job.job_type != "agent3_sla_escalation":
         raise HTTPException(status_code=404, detail="Escalation job was not found.")
-    if job.status != "pending":
-        raise HTTPException(status_code=409, detail="Escalation job is not pending.")
-    if job.attempt_count >= job.max_attempts:
-        raise HTTPException(status_code=409, detail="Escalation job has exhausted its attempts.")
 
     stored_event = session.get(MonitoringEvent, job.event_id)
     case = session.get(MonitoringCase, job.monitoring_case_id)
@@ -84,6 +80,13 @@ def process_monitoring_escalation_job(
         or event_input.event_id != str(stored_event.id)
     ):
         raise HTTPException(status_code=422, detail="A matching confirmed SLA breach is required.")
+
+    if job.status == "succeeded" and job.result is not None:
+        return {"record_id": str(job.id), "agent3_output": job.result}
+    if job.status != "pending":
+        raise HTTPException(status_code=409, detail="Escalation job is not pending.")
+    if job.attempt_count >= job.max_attempts:
+        raise HTTPException(status_code=409, detail="Escalation job has exhausted its attempts.")
 
     requested_ids = set()
     try:
@@ -169,6 +172,42 @@ def process_monitoring_escalation_job(
     session.commit()
     session.refresh(job)
     return {"record_id": str(job.id), "agent3_output": proposal.model_dump(mode="json")}
+
+
+@monitoring_router.get("/escalation-jobs/{job_id}")
+def read_monitoring_escalation_job(
+    job_id: UUID,
+    session: Session = Depends(get_session),
+    actor: Actor = Depends(get_current_analyst_reviewer),
+):
+    """Return the status and saved proposal for one Agent 3 escalation job."""
+    job = session.get(MonitoringJob, job_id)
+    if job is None or job.job_type != "agent3_sla_escalation":
+        raise HTTPException(status_code=404, detail="Escalation job was not found.")
+
+    proposal_events = list(session.scalars(
+        select(MonitoringEvent)
+        .where(
+            MonitoringEvent.monitoring_case_id == job.monitoring_case_id,
+            MonitoringEvent.event_type == "AGENT3_ESCALATION_PROPOSAL_RECORDED",
+            MonitoringEvent.idempotency_key == f"agent3-proposal:{job.id}",
+        )
+        .order_by(MonitoringEvent.occurred_at, MonitoringEvent.id)
+    ))
+    return {
+        "job_id": str(job.id),
+        "status": job.status,
+        "proposal": job.result,
+        "proposal_events": [
+            {
+                "event_id": str(event.id),
+                "event_type": event.event_type,
+                "occurred_at": event.occurred_at.isoformat(),
+                "proposal": event.data,
+            }
+            for event in proposal_events
+        ],
+    }
 
 
 @staff_router.get("/reviews", response_model=ComplaintAnalysisReviewPage)
