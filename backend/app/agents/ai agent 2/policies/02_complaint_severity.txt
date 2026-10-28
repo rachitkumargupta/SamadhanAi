@@ -1,0 +1,167 @@
+
+DOCUMENT_ID: DRAFT-SEVERITY-001
+TITLE: Generic Municipal Complaint Severity Classification
+DOCUMENT_STATUS: DRAFT - NOT OFFICIAL MUNICIPAL POLICY
+JURISDICTION: Generic municipal prototype
+VERSION: 1.0
+
+PURPOSE
+
+This document provides provisional severity-classification criteria
+for Samadhan AI Agent 2. It is intended for prototype testing and
+must not be represented as an official municipal policy.
+
+Severity is evaluated separately for each distinct issue in a complaint.
+The agent must consider the reported facts, potential consequences,
+available policy evidence, and uncertainty.
+
+SEVERITY LEVELS
+
+LEVEL: LOW
+
+Use as a provisional classification when the reported issue appears
+to have limited impact, no identified immediate safety concern, and
+no evidence of substantial service disruption.
+
+Examples for prototype testing:
+- A minor non-urgent maintenance concern.
+- A localized issue with limited reported impact.
+
+Do not classify an issue as low merely because the complaint contains
+few details.
+
+LEVEL: MEDIUM
+
+Use as a provisional classification when the issue has a noticeable
+effect on a service, public area, or a limited group of residents,
+but the available facts do not establish a significant immediate hazard.
+
+Examples for prototype testing:
+- A localized drainage problem.
+- A service interruption affecting a limited area.
+
+LEVEL: HIGH
+
+Use as a provisional classification when the reported facts indicate
+substantial service disruption, a potentially serious public impact,
+significant infrastructure damage, or a serious hazard requiring
+prompt assessment.
+
+Examples for prototype testing:
+- A major water leak affecting a public area.
+- Extensive waterlogging disrupting access.
+- Significant damage to public infrastructure.
+
+These examples are not automatic official severity assignments.
+The agent must evaluate the available facts and applicable rules.
+
+LEVEL: CRITICAL
+
+Use only when the available evidence supports an immediate or
+extreme threat to life, serious injury, or a comparably severe
+consequence under the applicable classification policy.
+
+Examples for prototype testing:
+- A credible report of an immediately dangerous electrical hazard.
+- A serious infrastructure failure presenting an immediate threat.
+
+A critical classification is a recommendation, not an emergency
+dispatch action or an official municipal determination.
+
+UNKNOWN OR INSUFFICIENT INFORMATION
+
+If the evidence does not support a defensible severity classification:
+
+- Set severity to undetermined.
+- Explain what information is missing.
+- Set requires_human_review to true.
+- Do not invent facts or assume that an unreported hazard exists.
+- Do not treat missing details as proof that an issue is harmless.
+
+ASSESSMENT FACTORS
+
+Evaluate the following factors when relevant:
+
+1. SAFETY
+   Is there evidence of a risk of injury, electrocution, contamination,
+   or another potential threat to people?
+
+2. EXTENT
+   Is the issue localized, widespread, or affecting multiple locations?
+
+3. SERVICE IMPACT
+   Is an essential service interrupted or significantly degraded?
+
+4. INFRASTRUCTURE IMPACT
+   Is public infrastructure damaged or potentially failing?
+
+5. EXPOSURE
+   Are pedestrians, residents, workers, or other members of the public
+   potentially exposed to the reported hazard?
+
+6. UNCERTAINTY
+   Are important facts missing, contradictory, or unverified?
+
+Do not infer the size of the affected area, number of residents,
+or severity of damage unless supported by the complaint or evidence.
+
+POTENTIAL IMMEDIATE HAZARDS
+
+When a complaint reports a potentially immediate hazard:
+
+- Flag it for urgent human attention.
+- Explain the reported hazard and why it may require urgent assessment.
+- Do not delay the hazard flag merely because an official SLA is missing.
+- Do not invent a response deadline.
+- Do not assume that a potential-hazard flag automatically establishes
+  an official municipal severity category.
+
+For exposed electrical wires, advise people to stay away and contact
+the appropriate emergency or utility authority through verified local
+channels. Do not advise untrained people to handle the wires.
+
+MULTIPLE ISSUES
+
+Assess each issue independently.
+
+For a complaint containing a major water leak and an exposed electrical
+wire, create or recommend separate child tasks if appropriate.
+
+Do not automatically assign both issues the same severity.
+
+A potential electrical hazard may require urgent human attention even
+when its official severity category or responsible authority remains
+unconfirmed.
+
+EVIDENCE AND DECISION RULES
+
+- Use retrieved policy evidence to apply official classification rules.
+- Clearly distinguish official rules from prototype draft criteria.
+- Never claim that these draft levels are statutory or municipality-approved.
+- Do not invent SLA deadlines from severity labels.
+- Do not use model confidence alone as proof that a classification is correct.
+- If official severity rules are unavailable, identify the output as a
+  provisional prototype recommendation and request human review where needed.
+- If the facts are insufficient, use undetermined rather than guessing.
+
+OUTPUT EXPECTATIONS
+
+For each issue, Agent 2 should provide:
+
+- Issue ID.
+- Recommended severity.
+- Explanation based on reported facts.
+- Supporting policy evidence, if available.
+- Confidence score.
+- Whether human review is required.
+- Reason for human review, when applicable.
+
+LIMITATIONS
+
+This document does not establish official municipal response times,
+statutory obligations, department jurisdiction, or escalation deadlines.
+
+All severity criteria must be verified against applicable official
+policies before the system is used for operational municipal decisions.
+
+END OF DOCUMENT

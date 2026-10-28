@@ -1,0 +1,135 @@
+
+DOCUMENT_ID: DRAFT-DEPT-001
+TITLE: Generic Municipal Department Jurisdiction and Routing
+DOCUMENT_STATUS: DRAFT - NOT OFFICIAL MUNICIPAL POLICY
+JURISDICTION: Generic municipal prototype
+VERSION: 1.0
+
+PURPOSE
+This document defines provisional routing guidance for the Samadhan AI
+Resolution and Routing Agent. It supports prototype testing only.
+It does not establish legally binding municipal responsibilities.
+
+SOURCE STATUS
+This is a project-authored draft. Department names and mappings must be
+verified against the relevant municipality's official organization,
+service charter, grievance portal, or published regulations before
+production use.
+
+GENERAL ROUTING RULES
+
+1. Identify each distinct issue in the complaint.
+2. Recommend a department only when retrieved evidence supports the
+   recommendation.
+3. Treat the mappings in this draft as candidate categories, not verified
+   assignments to a real municipal department.
+4. If the responsible authority is unclear, return an unresolved department
+   recommendation and request human review.
+5. If an issue may involve multiple authorities, propose separate child
+   tasks where appropriate and flag jurisdiction review.
+6. Do not invent department names, officer names, ward responsibilities,
+   escalation contacts, or official service deadlines.
+7. A municipality may delegate a service to a state agency, utility,
+   contractor, or another public authority. Verify the local arrangement.
+
+PROVISIONAL SERVICE CATEGORIES
+
+CATEGORY: WATER SUPPLY AND PIPELINE LEAKAGE
+Candidate responsibility:
+Water supply or water-utility function.
+
+Example issues:
+- Water pipeline leakage
+- Interrupted water supply
+- Suspected water-quality problem
+
+Routing condition:
+Use this category to retrieve relevant policy evidence. Confirm the actual
+responsible authority before making an official department recommendation.
+
+CATEGORY: SEWERAGE AND DRAINAGE
+Candidate responsibility:
+Sewerage, drainage, or stormwater-management function.
+
+Example issues:
+- Blocked drain
+- Sewer overflow
+- Waterlogging
+- Damaged stormwater drain
+
+Routing condition:
+Distinguish sewerage from stormwater drainage when the evidence permits.
+If the issue type or responsible authority is unclear, request human review.
+
+CATEGORY: SOLID WASTE AND SANITATION
+Candidate responsibility:
+Municipal sanitation or solid-waste-management function.
+
+Example issues:
+- Uncollected garbage
+- Public-area waste accumulation
+- Street-cleaning concern
+
+Routing condition:
+Verify the municipality's actual service ownership and complaint categories.
+
+CATEGORY: ROADS AND PUBLIC INFRASTRUCTURE
+Candidate responsibility:
+Road maintenance or public-infrastructure function.
+
+Example issues:
+- Potholes
+- Damaged public road
+- Damaged roadside infrastructure
+
+Routing condition:
+Determine whether the road is maintained by the municipality or another
+authority. If ownership is unknown, request human review.
+
+CATEGORY: STREET LIGHTING AND ELECTRICAL HAZARDS
+Candidate responsibility:
+Street-lighting or electrical-maintenance function, subject to local
+jurisdiction and infrastructure ownership.
+
+Example issues:
+- Non-functional street light
+- Exposed electrical wire
+- Damaged electrical equipment in a public area
+
+Routing condition:
+An exposed wire or suspected live electrical hazard must be flagged for
+urgent human attention. This flag is a safety recommendation, not an
+official municipal SLA or a confirmed department assignment.
+Do not recommend that the public touch or attempt to repair the hazard.
+
+MULTI-ISSUE COMPLAINTS
+
+If a complaint reports a major water leak and an exposed electrical wire:
+
+1. Preserve both issue IDs from the input.
+2. Propose separate child tasks when the issues require different handling.
+3. Retrieve evidence relevant to each issue.
+4. Assess the responsible authority for each issue independently.
+5. Flag the potential electrical hazard for urgent human attention.
+6. Do not assume that both issues belong to the same department.
+7. If official jurisdiction cannot be established, leave the assignment
+   unresolved and require human review.
+
+HUMAN REVIEW REQUIRED WHEN
+
+- No relevant policy evidence is retrieved.
+- Evidence does not establish the responsible authority.
+- The municipality or ward jurisdiction is unknown.
+- Multiple authorities may be responsible.
+- The issue falls outside the available policy documents.
+- The proposed assignment conflicts with retrieved evidence.
+
+AUTHORITY AND SLA LIMITATIONS
+
+This draft does not define official severity levels, statutory duties,
+completion deadlines, service-level agreements, or escalation procedures.
+
+These details must be obtained from applicable, verified official sources.
+Do not treat candidate service categories as proof of jurisdiction.
+
+END OF DOCUMENT
