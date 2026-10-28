@@ -1,0 +1,136 @@
+
+DOCUMENT_ID: DRAFT-WATER-001
+TITLE: Municipal Water Supply and Leakage Handling
+DOCUMENT_STATUS: DRAFT - NOT OFFICIAL MUNICIPAL POLICY
+JURISDICTION: Generic municipal prototype
+VERSION: 1.0
+
+PURPOSE
+
+This document provides provisional guidance for classifying and routing
+water-supply complaints in the Samadhan AI prototype.
+
+It does not establish official municipal responsibilities or deadlines.
+
+SCOPE
+
+This policy covers:
+- Water pipeline leakage.
+- Major water leakage in public areas.
+- Interrupted water supply.
+- Suspected water-quality concerns.
+- Damage to water-supply infrastructure.
+
+ISSUE IDENTIFICATION
+
+Identify the reported water-related issue and preserve its original
+issue ID.
+
+Do not merge a water leak with a separate electrical, sanitation,
+or infrastructure hazard simply because the issues share a location.
+
+WATER PIPELINE LEAKAGE
+
+When a leak is reported, evaluate:
+
+- Reported leak size or intensity.
+- Whether water is affecting a road, building, or public area.
+- Whether access or essential services are disrupted.
+- Whether infrastructure damage is reported.
+- Whether a secondary hazard, such as an exposed electrical wire,
+  is also reported.
+- Whether the location and extent of the leak are known.
+
+Do not invent the leak's size, duration, cause, or affected population.
+
+PROVISIONAL SEVERITY GUIDANCE
+
+LOW:
+A limited leak with no reported significant disruption or identified
+safety concern may be considered low for prototype testing.
+
+MEDIUM:
+A leak causing localized disruption or affecting a limited public area
+may be considered medium when the available facts support that assessment.
+
+HIGH:
+A major leak causing substantial water loss, significant disruption,
+road damage, or widespread impact may warrant a high-severity proposal.
+
+CRITICAL:
+Use only if the reported facts and applicable classification rules
+support an immediate or extreme threat.
+
+These are provisional examples, not official severity thresholds.
+If facts are insufficient, use undetermined and request human review.
+
+SECONDARY HAZARDS
+
+A water leak may coincide with:
+- An exposed electrical wire.
+- Road damage or subsidence.
+- Flooding that obstructs public access.
+- Suspected contamination.
+
+Assess each distinct issue independently.
+
+Flag a potential immediate safety hazard for urgent human attention.
+Do not infer that the water-related department owns the secondary hazard.
+
+DEPARTMENT ROUTING
+
+Candidate service category:
+Water supply or water utility.
+
+Before making an official assignment, verify the responsible authority
+using municipality-specific jurisdiction records or official policy.
+
+The responsible authority may differ depending on infrastructure
+ownership and local administrative arrangements.
+
+If jurisdiction cannot be established:
+- Leave the department assignment unresolved.
+- Explain the evidence gap.
+- Set requires_human_review to true.
+
+WATER SUPPLY INTERRUPTION
+
+For a reported interruption, identify:
+- The affected location, if known.
+- Whether the interruption is localized or widespread.
+- The reported duration, if provided.
+- Any official service-restoration guidance found in retrieved evidence.
+
+Do not invent a restoration estimate or claim that an official outage
+has been confirmed.
+
+WATER QUALITY CONCERNS
+
+For suspected contamination:
+- Record the reported concern accurately.
+- Flag the need for appropriate human assessment.
+- Retrieve applicable official water-quality and public-health guidance.
+- Do not diagnose contamination based solely on an unverified complaint.
+- Do not invent laboratory results or safety declarations.
+
+SLA AND COMPLETION TIMELINES
+
+This document defines no official response deadline, completion time,
+or service-level agreement.
+
+Only provide an official timeline when a verified, applicable policy
+supports it.
+
+If no applicable SLA evidence is available, set completion_timeline
+to null and request human review where appropriate.
+
+EVIDENCE REQUIREMENTS
+
+Distinguish:
+- Verified official policy evidence.
+- Project-authored prototype guidance.
+- Unverified complaint information.
+
+Do not present this draft as an official municipal regulation.
+
+END OF DOCUMENT
