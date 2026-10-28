@@ -5,7 +5,11 @@ from fastapi import Request
 
 from backend.app.errors import install_error_handlers
 from backend.app.middleware import RequestBodyLimitMiddleware
-from backend.app.routes import router as complaints_router, staff_router
+from backend.app.routes import (
+    monitoring_router,
+    router as complaints_router,
+    staff_router,
+)
 from backend.app.agents.complaint_analyst import MAX_IMAGE_BYTES
 
 
@@ -18,6 +22,7 @@ app.add_middleware(
 )
 app.include_router(complaints_router)
 app.include_router(staff_router)
+app.include_router(monitoring_router)
 install_error_handlers(app)
 
 

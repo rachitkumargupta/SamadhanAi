@@ -1,4 +1,8 @@
+from datetime import datetime, timedelta, timezone
+from uuid import UUID, uuid4
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, Query, Request, Response, UploadFile, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.database import get_session
@@ -18,6 +22,18 @@ from backend.app.agents.complaint_analyst import (
     normalize_image,
 )
 from backend.app.security import Actor, get_current_analyst_reviewer, get_current_citizen
+from backend.app.agents.monitoring_escalation import (
+    AuthorityCandidate,
+    EscalationEvent,
+    EscalationAgentError,
+    build_monitoring_escalation_agent,
+)
+from backend.app.models import (
+    MonitoringAuthority,
+    MonitoringCase,
+    MonitoringEvent,
+    MonitoringJob,
+)
 from backend.app.storage import PrivateLocalMediaStore
 from backend.app.services import (
     get_complaint_analysis,
@@ -34,6 +50,125 @@ from backend.app.config import get_settings
 
 router = APIRouter(prefix="/api/v1/complaints", tags=["complaints"])
 staff_router = APIRouter(prefix="/api/v1/staff/complaint-analysis", tags=["complaint-analysis-review"])
+monitoring_router = APIRouter(prefix="/api/v1/staff/monitoring", tags=["monitoring"])
+
+
+@monitoring_router.post("/escalation-jobs/{job_id}")
+def process_monitoring_escalation_job(
+    job_id: UUID,
+    event_input: EscalationEvent,
+    session: Session = Depends(get_session),
+    actor: Actor = Depends(get_current_analyst_reviewer),
+):
+    """Process one existing confirmed breach job and persist its Agent 3 proposal."""
+    job = session.scalar(
+        select(MonitoringJob).where(MonitoringJob.id == job_id).with_for_update()
+    )
+    if job is None or job.job_type != "agent3_sla_escalation":
+        raise HTTPException(status_code=404, detail="Escalation job was not found.")
+    if job.status != "pending":
+        raise HTTPException(status_code=409, detail="Escalation job is not pending.")
+    if job.attempt_count >= job.max_attempts:
+        raise HTTPException(status_code=409, detail="Escalation job has exhausted its attempts.")
+
+    stored_event = session.get(MonitoringEvent, job.event_id)
+    case = session.get(MonitoringCase, job.monitoring_case_id)
+    if (
+        stored_event is None
+        or case is None
+        or stored_event.monitoring_case_id != job.monitoring_case_id
+        or stored_event.event_type != "SLA_BREACHED"
+        or case.sla_status != "breached"
+        or event_input.event_type != "SLA_BREACHED"
+        or not event_input.breach_confirmed
+        or event_input.event_id != str(stored_event.id)
+    ):
+        raise HTTPException(status_code=422, detail="A matching confirmed SLA breach is required.")
+
+    requested_ids = set()
+    try:
+        requested_ids = {UUID(item.authority_id) for item in event_input.escalation_hierarchy}
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Authority IDs must be valid UUIDs.") from None
+
+    authorities = list(session.scalars(
+        select(MonitoringAuthority).where(
+            MonitoringAuthority.id.in_(requested_ids),
+            MonitoringAuthority.active.is_(True),
+            MonitoringAuthority.authority_type == "senior_authority",
+            MonitoringAuthority.jurisdiction_id == case.jurisdiction_id,
+            MonitoringAuthority.escalation_level > case.current_escalation_level,
+        )
+    )) if requested_ids else []
+    authorities = [
+        authority for authority in authorities
+        if authority.department_id in (case.department_id, None)
+    ]
+    if len(authorities) != len(requested_ids):
+        raise HTTPException(status_code=422, detail="All escalation authorities must be currently eligible.")
+
+    trusted_input = event_input.model_copy(update={
+        "event_id": str(stored_event.id),
+        "event_type": "SLA_BREACHED",
+        "breach_confirmed": True,
+        "complaint_reference": case.complaint_reference,
+        "ticket_reference": case.complaint_reference,
+        "ticket_state": case.work_status,
+        "sla_policy_id": case.sla_policy_id,
+        "sla_policy_version": case.sla_policy_version,
+        "deadline_utc": case.sla_deadline_at.isoformat(),
+        "breached_at_utc": (case.sla_breached_at or stored_event.occurred_at).isoformat(),
+        "escalation_hierarchy": [AuthorityCandidate(
+            authority_id=str(item.id),
+            display_name=item.display_name,
+            level=f"level_{item.escalation_level}",
+            eligibility_basis=item.eligibility_basis,
+        ) for item in authorities],
+    })
+
+    # Claim the job before calling the provider so the background worker will
+    # not claim this same pending item concurrently.
+    now = datetime.now(timezone.utc)
+    claim_owner = f"api-escalation:{actor.subject}:{uuid4()}"[:120]
+    job.status = "running"
+    job.attempt_count += 1
+    job.lease_owner = claim_owner
+    job.lease_expires_at = now + timedelta(seconds=180)
+    session.commit()
+
+    try:
+        proposal = build_monitoring_escalation_agent(get_settings()).handle(trusted_input)
+    except EscalationAgentError as exc:
+        session.refresh(job)
+        if job.status != "running" or job.lease_owner != claim_owner:
+            raise HTTPException(status_code=409, detail="Escalation job claim was lost.") from exc
+        job.status = "failed" if job.attempt_count >= job.max_attempts else "pending"
+        job.error_code = f"agent3_failed_{type(exc).__name__}"
+        job.lease_owner = None
+        job.lease_expires_at = None
+        if job.status == "failed":
+            job.completed_at = datetime.now(timezone.utc)
+        session.commit()
+        raise HTTPException(status_code=503, detail="Agent 3 could not process the escalation job.") from exc
+
+    session.refresh(job)
+    if job.status != "running" or job.lease_owner != claim_owner:
+        raise HTTPException(status_code=409, detail="Escalation job claim was lost.")
+    job.result = proposal.model_dump(mode="json")
+    job.status = "succeeded"
+    job.lease_owner = None
+    job.lease_expires_at = None
+    job.error_code = None
+    job.completed_at = datetime.now(timezone.utc)
+    session.add(MonitoringEvent(
+        monitoring_case_id=case.id,
+        event_type="AGENT3_ESCALATION_PROPOSAL_RECORDED",
+        idempotency_key=f"agent3-proposal:{job.id}",
+        data=proposal.model_dump(mode="json"),
+    ))
+    session.commit()
+    session.refresh(job)
+    return {"record_id": str(job.id), "agent3_output": proposal.model_dump(mode="json")}
 
 
 @staff_router.get("/reviews", response_model=ComplaintAnalysisReviewPage)
