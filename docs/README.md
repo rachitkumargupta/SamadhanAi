@@ -4,7 +4,7 @@ This documentation set is aligned to the supplied **Complete Project Specificati
 
 ## Current status
 
-The backend is a preliminary text-based citizen complaint intake/tracking slice. It does not yet implement image upload, GPS/manual map capture, async analysis, routing, child tickets, SLA worker, escalation, staff/admin interfaces, notifications, or verification. Check [backend setup and implementation status](../backend/README.md) and [roadmap](planning/roadmap.md) before treating any target capability as complete.
+The backend includes image-first intake, asynchronous analysis, and an integration-stage Agent 3 worker with officer resolution-proof upload and protected proof access. Citizen confirmation/dispute, reviewer decisions, automatic SLA-case registration, parent/child tickets, and production integrations remain outstanding. Check [backend setup and implementation status](../backend/README.md), [Agent 3 implementation notes](architecture/agent3-monitoring-implementation.md), and [roadmap](planning/roadmap.md) before treating target capabilities as complete.
 
 ## Contents
 

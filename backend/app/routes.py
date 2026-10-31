@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import hashlib
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, Query, Request, Response, UploadFile, status
@@ -15,13 +16,20 @@ from backend.app.schemas import (
     ComplaintListPage,
     ComplaintRead,
     ComplaintSubmissionRead,
+    ResolutionProofSubmissionRead,
 )
 from backend.app.agents.complaint_analyst import (
     MAX_IMAGE_BYTES,
     AnalystInputError,
     normalize_image,
 )
-from backend.app.security import Actor, get_current_analyst_reviewer, get_current_citizen
+from backend.app.security import (
+    Actor,
+    get_current_analyst_reviewer,
+    get_current_citizen,
+    get_current_resolution_officer,
+    get_current_independent_verification_reviewer,
+)
 from backend.app.agents.monitoring_escalation import (
     AuthorityCandidate,
     EscalationEvent,
@@ -29,6 +37,9 @@ from backend.app.agents.monitoring_escalation import (
     build_monitoring_escalation_agent,
 )
 from backend.app.models import (
+    Complaint,
+    ComplaintEvent,
+    ComplaintMedia,
     MonitoringAuthority,
     MonitoringCase,
     MonitoringEvent,
@@ -46,11 +57,14 @@ from backend.app.services import (
     submit_complaint_with_image,
 )
 from backend.app.config import get_settings
+from backend.app.monitoring import MonitoringRegistrationError, record_resolution_submission
 
 
 router = APIRouter(prefix="/api/v1/complaints", tags=["complaints"])
 staff_router = APIRouter(prefix="/api/v1/staff/complaint-analysis", tags=["complaint-analysis-review"])
 monitoring_router = APIRouter(prefix="/api/v1/staff/monitoring", tags=["monitoring"])
+resolution_router = APIRouter(prefix="/api/v1/staff/complaints", tags=["resolution-proof"])
+verification_review_router = APIRouter(prefix="/api/v1/staff/verification-reviews", tags=["verification-review"])
 
 
 @monitoring_router.post("/escalation-jobs/{job_id}")
@@ -263,6 +277,174 @@ def read_analysis_review_image(
         media_type="image/jpeg",
         headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
     )
+
+
+@resolution_router.post(
+    "/{public_reference}/resolution-proof",
+    response_model=ResolutionProofSubmissionRead,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def submit_resolution_proof(
+    request: Request,
+    image: UploadFile = File(...),
+    public_reference: str = Path(max_length=32),
+    session: Session = Depends(get_session),
+    actor: Actor = Depends(get_current_resolution_officer),
+) -> ResolutionProofSubmissionRead:
+    """Assigned officer submits a private image; this never closes the complaint."""
+    case = session.scalar(
+        select(MonitoringCase)
+        .join(Complaint, Complaint.id == MonitoringCase.complaint_id)
+        .where(Complaint.public_reference == public_reference)
+        .with_for_update()
+    )
+    if case is None:
+        image.file.close()
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Assigned work item was not found."})
+    if case.assigned_officer_subject != actor.subject:
+        image.file.close()
+        raise HTTPException(status_code=403, detail={"code": "assignment_required", "message": "Only the assigned officer can submit proof."})
+
+    content_length = request.headers.get("content-length")
+    if content_length and content_length.isdecimal() and int(content_length) > MAX_IMAGE_BYTES + 256_000:
+        image.file.close()
+        raise HTTPException(status_code=413, detail={"code": "request_too_large", "message": "Resolution proof upload exceeds the request limit."})
+    raw_image = _read_upload_bounded(image)
+    try:
+        normalized_image, _ = normalize_image(raw_image)
+    except AnalystInputError as exc:
+        raise HTTPException(status_code=422, detail={"code": "invalid_image", "message": str(exc)}) from exc
+
+    settings = get_settings()
+    try:
+        media_store = PrivateLocalMediaStore(settings.complaint_media_storage_dir)
+        object_key = media_store.save_image(normalized_image)
+    except OSError as exc:
+        raise HTTPException(status_code=503, detail={"code": "media_storage_unavailable", "message": "Resolution proof could not be stored."}) from exc
+
+    complaint = session.get(Complaint, case.complaint_id)
+    if complaint is None:
+        try:
+            media_store.delete(object_key)
+        except OSError:
+            pass
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Complaint was not found."})
+
+    now = datetime.now(timezone.utc)
+    deadline = now + timedelta(hours=settings.citizen_verification_window_hours)
+    previous_status = complaint.status
+    try:
+        session.add(ComplaintMedia(
+            complaint_id=complaint.id,
+            object_key=object_key,
+            media_type="image/jpeg",
+            purpose="resolution_proof_normalized",
+            size_bytes=len(normalized_image),
+            sha256=hashlib.sha256(normalized_image).hexdigest(),
+            uploaded_by=actor.subject,
+        ))
+        session.flush()
+        record_resolution_submission(
+            session,
+            complaint_id=complaint.id,
+            actor_subject=actor.subject,
+            evidence_ref=object_key,
+            verification_deadline_at=deadline,
+            submitted_at=now,
+        )
+        complaint.status = "resolved_pending_verification"
+        session.add(ComplaintEvent(
+            complaint_id=complaint.id,
+            event_type="resolution_proof_submitted",
+            actor_subject=actor.subject,
+            previous_state=previous_status,
+            resulting_state=complaint.status,
+            correlation_id=getattr(request.state, "correlation_id", None),
+            visibility="citizen",
+            occurred_at=now,
+        ))
+        session.commit()
+    except MonitoringRegistrationError as exc:
+        session.rollback()
+        try:
+            media_store.delete(object_key)
+        except OSError:
+            pass
+        raise HTTPException(status_code=409, detail={"code": "resolution_not_allowed", "message": str(exc)}) from exc
+    except Exception:
+        session.rollback()
+        try:
+            referenced = media_object_is_referenced(session, object_key=object_key)
+        except Exception:
+            referenced = True
+        if not referenced:
+            try:
+                media_store.delete(object_key)
+            except OSError:
+                pass
+        raise
+
+    return ResolutionProofSubmissionRead(
+        public_reference=complaint.public_reference,
+        complaint_status=complaint.status,
+        work_status="resolution_submitted",
+        verification_status="not_started",
+        verification_deadline_at=deadline,
+        citizen_proof_url=f"/api/v1/complaints/{complaint.public_reference}/verification-proof",
+    )
+
+
+def _read_resolution_proof(session: Session, case: MonitoringCase) -> Response:
+    if not case.resolution_evidence_ref:
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Resolution proof was not found."})
+    media = session.scalar(select(ComplaintMedia).where(
+        ComplaintMedia.complaint_id == case.complaint_id,
+        ComplaintMedia.object_key == case.resolution_evidence_ref,
+        ComplaintMedia.purpose == "resolution_proof_normalized",
+    ))
+    if media is None:
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Resolution proof was not found."})
+    try:
+        content = PrivateLocalMediaStore(get_settings().complaint_media_storage_dir).read_image(media.object_key)
+        if len(content) != media.size_bytes or hashlib.sha256(content).hexdigest() != media.sha256:
+            raise ValueError("Stored resolution proof integrity check failed.")
+    except (OSError, ValueError):
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Resolution proof was not found."}) from None
+    return Response(content=content, media_type="image/jpeg", headers={
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+    })
+
+
+@router.get("/{public_reference}/verification-proof")
+def read_citizen_resolution_proof(
+    public_reference: str = Path(max_length=32),
+    session: Session = Depends(get_session),
+    actor: Actor = Depends(get_current_citizen),
+) -> Response:
+    complaint = get_owned_complaint(session, public_reference=public_reference, actor_subject=actor.subject)
+    if complaint is None:
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Complaint was not found."})
+    case = session.scalar(select(MonitoringCase).where(MonitoringCase.complaint_id == complaint.id))
+    if case is None or case.verification_status not in {"not_started", "pending_citizen", "review_required", "disputed", "approved"}:
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Resolution proof was not found."})
+    return _read_resolution_proof(session, case)
+
+
+@verification_review_router.get("/{public_reference}/proof")
+def read_independent_reviewer_proof(
+    public_reference: str = Path(max_length=32),
+    session: Session = Depends(get_session),
+    actor: Actor = Depends(get_current_independent_verification_reviewer),
+) -> Response:
+    case = session.scalar(
+        select(MonitoringCase)
+        .join(Complaint, Complaint.id == MonitoringCase.complaint_id)
+        .where(Complaint.public_reference == public_reference)
+    )
+    if case is None or case.independent_reviewer_subject != actor.subject or case.verification_status != "review_required":
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Assigned verification proof was not found."})
+    return _read_resolution_proof(session, case)
 
 
 def _read_upload_bounded(upload: UploadFile) -> bytes:

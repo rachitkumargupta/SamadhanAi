@@ -6,7 +6,7 @@ The target has exactly three core agents: Complaint Analyst, Resolution & Routin
 
 ## Current implementation status
 
-The backend now has a first-agent vertical slice: authenticated image-first intake, normalized private local media storage, durable asynchronous Complaint Analyst processing, analysis status/results, and owner-scoped tracking. It does **not** yet implement approved deterministic priority/safety policy, production object storage/scanning, location capture, policy-grounded routing, parent/child tickets, staff workflows, SLA processing, escalation, notifications, or citizen verification. Those remain target capabilities. Current environment and endpoints are listed in [backend README](backend/README.md).
+The backend has authenticated image-first intake, normalized private local media storage, durable asynchronous Complaint Analyst processing, and owner-scoped tracking. The Agent 3 slice now includes assigned-officer resolution-proof upload and protected proof viewing; it changes the complaint to `resolved_pending_verification` without closing it. Citizen decisions, reviewer decisions, automatic SLA-case registration, and production storage remain incomplete. Current environment and endpoints are listed in [backend README](backend/README.md).
 
 ## Documentation
 

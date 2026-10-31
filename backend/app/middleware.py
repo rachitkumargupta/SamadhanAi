@@ -8,16 +8,19 @@ from starlette.responses import JSONResponse
 
 
 class RequestBodyLimitMiddleware:
-    def __init__(self, app, *, path: str, method: str, maximum_bytes: int):
+    def __init__(self, app, *, path: str, method: str, maximum_bytes: int, path_prefix: bool = False):
         self.app = app
         self.path = path
         self.method = method
         self.maximum_bytes = maximum_bytes
+        self.path_prefix = path_prefix
 
     async def __call__(self, scope, receive, send):
+        request_path = scope.get("path", "")
+        path_matches = request_path.startswith(self.path) if self.path_prefix else request_path == self.path
         if (
             scope["type"] != "http"
-            or scope.get("path") != self.path
+            or not path_matches
             or scope.get("method") != self.method
         ):
             await self.app(scope, receive, send)

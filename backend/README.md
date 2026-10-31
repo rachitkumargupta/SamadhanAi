@@ -1,6 +1,6 @@
 # Backend (citizen intake/tracking and Complaint Analyst core)
 
-This is a partial implementation, not the target MVP. It supports authenticated image-first complaint intake, private local media persistence, durable asynchronous Complaint Analyst jobs/results, owner-scoped tracking, a capability-protected read-only Analyst review queue with image access, and a configurable provisional taxonomy/priority framework. Municipal approval of the taxonomy/rubric, production object storage and scanning, review assignment/dispositions/retries, routing, parent/child work, SLA processing, escalation, notifications, broader staff workflows, and citizen verification remain open.
+This is a partial implementation, not the target MVP. It supports authenticated image-first complaint intake, private local media persistence, durable asynchronous Complaint Analyst jobs/results, owner-scoped tracking, a capability-protected read-only Analyst review queue with image access, and a configurable provisional taxonomy/priority framework. Agent 3 also supports officer resolution-proof upload and protected proof viewing. Citizen confirmation/dispute and reviewer decisions, automatic SLA-case registration, production storage/scanning, and the remaining routing and staff workflows remain open.
 
 ## Provisional choices
 
@@ -59,3 +59,13 @@ The callable core in `backend/app/agents/complaint_analyst.py` returns a typed p
 Configure `OPENAI_API_KEY`, `COMPLAINT_ANALYST_MODEL`, `COMPLAINT_ANALYST_TIMEOUT_SECONDS`, optional `COMPLAINT_ANALYST_POLICY_FILE` / `COMPLAINT_ANALYST_CATEGORIES`, `COMPLAINT_MEDIA_STORAGE_DIR`, and `COMPLAINT_ANALYSIS_WORKER_POLL_SECONDS`. The default versioned policy lives at `backend/app/agents/analysis_policy.json` and is explicitly a provisional engineering baseline, not municipal policy. The OpenAI adapter is the current development adapter; the project has not approved a production provider, model, or data-handling agreement. Missing credentials fail the job into manual review; results are never fabricated. See the [MVP analysis framework](../docs/architecture/complaint-analysis-mvp-policy.md) and [integration contract](../docs/architecture/complaint-analyst-integration.md).
 
 Run tests after installing `requirements-dev.txt` with `python -m unittest discover -s tests -v`.
+
+## Officer resolution-proof flow
+
+- `POST /api/v1/staff/complaints/{public_reference}/resolution-proof` accepts an image from the assigned officer. The trusted JWT must include `complaint:resolve` and its subject must match the assigned officer.
+- The image is normalized and stored privately; the database records its opaque key, size, SHA-256 digest, and a citizen-visible audit event.
+- The complaint status becomes `resolved_pending_verification`. It is **not closed**. The monitoring worker starts citizen verification and writes the citizen notification record on its next scan.
+- `GET /api/v1/complaints/{public_reference}/verification-proof` returns the image only to the complaint owner.
+- `GET /api/v1/staff/verification-reviews/{public_reference}/proof` returns it only to the assigned independent reviewer after the case enters `review_required`.
+
+The routes require an existing `monitoring_cases` row and configured authorization claims. Agent 2 case registration is not connected automatically. Citizen confirm/dispute and reviewer decision endpoints are not included, so this flow does not close a complaint.
