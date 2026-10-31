@@ -139,3 +139,9 @@ def get_current_independent_verification_reviewer(
 ) -> Actor:
     return _get_current_staff_with_permission(credentials, settings, "complaint_verification:review")
 
+def get_current_senior_verification_authority(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    settings: Settings = Depends(get_settings),
+) -> Actor:
+    return _get_current_staff_with_permission(credentials, settings, "complaint_verification:senior_review")
+

@@ -4,7 +4,7 @@ This documentation set is aligned to the supplied **Complete Project Specificati
 
 ## Current status
 
-The backend includes image-first intake, asynchronous analysis, and an integration-stage Agent 3 worker with officer resolution-proof upload and protected proof access. Citizen confirmation/dispute, reviewer decisions, automatic SLA-case registration, parent/child tickets, and production integrations remain outstanding. Check [backend setup and implementation status](../backend/README.md), [Agent 3 implementation notes](architecture/agent3-monitoring-implementation.md), and [roadmap](planning/roadmap.md) before treating target capabilities as complete.
+The backend includes image-first intake, asynchronous analysis, and an integration-stage Agent 3 worker with officer resolution-proof upload and protected proof access. Citizen confirmation/dispute and assigned senior-authority/independent-review decisions are represented in the Agent 3 API. Automatic SLA-case registration, parent/child tickets, user-facing notification delivery, and production integrations remain outstanding. Check [backend setup and implementation status](../backend/README.md), [Agent 3 implementation notes](architecture/agent3-monitoring-implementation.md), and [roadmap](planning/roadmap.md) before treating target capabilities as complete.
 
 ## Contents
 
