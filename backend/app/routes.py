@@ -17,6 +17,12 @@ from backend.app.schemas import (
     ComplaintRead,
     ComplaintSubmissionRead,
     ResolutionProofSubmissionRead,
+    CitizenVerificationDecision,
+    VerificationAuthorityDecision,
+    VerificationDecisionRead,
+    VerificationReviewContextRead,
+    NotificationRead,
+    NotificationPage,
 )
 from backend.app.agents.complaint_analyst import (
     MAX_IMAGE_BYTES,
@@ -29,6 +35,8 @@ from backend.app.security import (
     get_current_citizen,
     get_current_resolution_officer,
     get_current_independent_verification_reviewer,
+    get_current_senior_verification_authority,
+    get_current_notification_recipient,
 )
 from backend.app.agents.monitoring_escalation import (
     AuthorityCandidate,
@@ -44,6 +52,7 @@ from backend.app.models import (
     MonitoringCase,
     MonitoringEvent,
     MonitoringJob,
+    MonitoringNotification,
 )
 from backend.app.storage import PrivateLocalMediaStore
 from backend.app.services import (
@@ -65,6 +74,7 @@ staff_router = APIRouter(prefix="/api/v1/staff/complaint-analysis", tags=["compl
 monitoring_router = APIRouter(prefix="/api/v1/staff/monitoring", tags=["monitoring"])
 resolution_router = APIRouter(prefix="/api/v1/staff/complaints", tags=["resolution-proof"])
 verification_review_router = APIRouter(prefix="/api/v1/staff/verification-reviews", tags=["verification-review"])
+notifications_router = APIRouter(prefix="/api/v1/notifications", tags=["notifications"])
 
 
 @monitoring_router.post("/escalation-jobs/{job_id}")
@@ -431,6 +441,393 @@ def read_citizen_resolution_proof(
     return _read_resolution_proof(session, case)
 
 
+def _locked_complaint_case(session: Session, public_reference: str):
+    row = session.execute(
+        select(MonitoringCase, Complaint)
+        .join(Complaint, Complaint.id == MonitoringCase.complaint_id)
+        .where(Complaint.public_reference == public_reference)
+        .with_for_update()
+    ).first()
+    return row if row is not None else (None, None)
+
+
+def _add_verification_event(session: Session, case: MonitoringCase, event_type: str, data: dict, now: datetime) -> MonitoringEvent:
+    event = MonitoringEvent(
+        monitoring_case_id=case.id,
+        event_type=event_type,
+        idempotency_key=f"verification-action:{case.id}:{uuid4()}",
+        data=data,
+        occurred_at=now,
+    )
+    session.add(event)
+    session.flush()
+    return event
+
+
+def _add_verification_notification(
+    session: Session,
+    case: MonitoringCase,
+    *,
+    recipient: str,
+    notification_type: str,
+    payload: dict,
+    event: MonitoringEvent,
+    now: datetime,
+) -> None:
+    session.add(MonitoringNotification(
+        monitoring_case_id=case.id,
+        recipient_subject=recipient,
+        notification_type=notification_type,
+        idempotency_key=f"verification-action:{event.id}:{hashlib.sha256(recipient.encode()).hexdigest()[:16]}:{notification_type}",
+        payload=payload,
+        created_at=now,
+    ))
+
+
+def _available_senior_authority(session: Session, case: MonitoringCase) -> MonitoringAuthority | None:
+    if case.senior_authority_subject:
+        assigned = session.scalar(select(MonitoringAuthority).where(
+            MonitoringAuthority.subject == case.senior_authority_subject,
+            MonitoringAuthority.active.is_(True),
+            MonitoringAuthority.authority_type == "senior_authority",
+            MonitoringAuthority.jurisdiction_id == case.jurisdiction_id,
+            MonitoringAuthority.department_id == case.department_id,
+        ))
+        if assigned is not None:
+            return assigned
+    return session.scalar(
+        select(MonitoringAuthority)
+        .where(
+            MonitoringAuthority.active.is_(True),
+            MonitoringAuthority.authority_type == "senior_authority",
+            MonitoringAuthority.jurisdiction_id == case.jurisdiction_id,
+            MonitoringAuthority.department_id == case.department_id,
+            MonitoringAuthority.escalation_level > case.current_escalation_level,
+        )
+        .order_by(MonitoringAuthority.escalation_level, MonitoringAuthority.id)
+        .limit(1)
+    )
+
+
+@router.post("/{public_reference}/verification-decision", response_model=VerificationDecisionRead)
+def submit_citizen_verification_decision(
+    request: Request,
+    decision: CitizenVerificationDecision,
+    public_reference: str = Path(max_length=32),
+    session: Session = Depends(get_session),
+    actor: Actor = Depends(get_current_citizen),
+) -> VerificationDecisionRead:
+    case, complaint = _locked_complaint_case(session, public_reference)
+    if case is None or complaint.owner_subject != actor.subject:
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Complaint was not found."})
+    if case.verification_deadline_at is None or case.resolution_evidence_ref is None:
+        raise HTTPException(status_code=409, detail={"code": "verification_not_ready", "message": "Resolution proof is not awaiting a citizen decision."})
+    if case.verification_status not in {"not_started", "pending_citizen", "review_required"}:
+        raise HTTPException(status_code=409, detail={"code": "verification_not_pending", "message": "This case is no longer awaiting a citizen decision."})
+
+    if decision.decision == "dispute" and not (decision.reason and decision.reason.strip()):
+        raise HTTPException(status_code=422, detail={"code": "dispute_reason_required", "message": "Add a short reason for disputing the resolution."})
+
+    now = datetime.now(timezone.utc)
+    is_review_active = case.verification_status == "review_required"
+    window_open = now <= case.verification_deadline_at
+    if is_review_active or not window_open:
+        event = _add_verification_event(session, case, "CITIZEN_LATE_VERIFICATION_RESPONSE", {
+            "decision": decision.decision,
+            "reason": decision.reason,
+            "received_at": now.isoformat(),
+            "reviewer_subject": case.independent_reviewer_subject,
+        }, now)
+        if case.independent_reviewer_subject:
+            _add_verification_notification(session, case, recipient=case.independent_reviewer_subject,
+                notification_type="late_citizen_response_for_review",
+                payload={"complaint_reference": public_reference, "decision": decision.decision, "reason": decision.reason},
+                event=event, now=now)
+        session.add(ComplaintEvent(
+            complaint_id=complaint.id,
+            event_type="citizen_late_verification_response_recorded",
+            actor_subject=actor.subject,
+            previous_state=complaint.status,
+            resulting_state=complaint.status,
+            correlation_id=getattr(request.state, "correlation_id", None),
+            visibility="citizen",
+            occurred_at=now,
+        ))
+        session.commit()
+        return VerificationDecisionRead(
+            public_reference=public_reference,
+            work_status=case.work_status,
+            verification_status=case.verification_status,
+            action="recorded_for_independent_reviewer" if case.independent_reviewer_subject else "recorded_after_deadline",
+            message=(
+                "Your response was recorded for the assigned independent reviewer. It does not automatically close or cancel the review."
+                if case.independent_reviewer_subject
+                else "Your response was recorded after the deadline. The monitoring worker will route the case for independent review; this response does not close it."
+            ),
+        )
+
+    if case.verification_status not in {"not_started", "pending_citizen"} or case.work_status not in {"resolution_submitted", "pending_citizen_verification"}:
+        raise HTTPException(status_code=409, detail={"code": "verification_not_pending", "message": "This case is not awaiting a citizen decision."})
+    previous_status = complaint.status
+    if decision.decision == "confirm":
+        case.verification_status = "approved"
+        case.work_status = "closed"
+        complaint.status = "closed"
+        event = _add_verification_event(session, case, "CITIZEN_VERIFICATION_CONFIRMED", {
+            "decision": "confirm",
+            "decided_by": actor.subject,
+            "decided_at": now.isoformat(),
+        }, now)
+        action = "closed"
+        message = "Your confirmation was recorded and the complaint is closed."
+        citizen_event = "citizen_confirmed_resolution"
+    else:
+        authority = _available_senior_authority(session, case)
+        if authority is None:
+            raise HTTPException(status_code=503, detail={"code": "senior_authority_unavailable", "message": "No eligible senior authority is configured for this department and jurisdiction."})
+        case.verification_status = "disputed"
+        case.work_status = "disputed"
+        case.senior_authority_subject = authority.subject
+        complaint.status = "verification_disputed"
+        event = _add_verification_event(session, case, "CITIZEN_VERIFICATION_DISPUTED", {
+            "decision": "dispute",
+            "reason": decision.reason.strip(),
+            "decided_by": actor.subject,
+            "senior_authority_subject": authority.subject,
+            "decided_at": now.isoformat(),
+        }, now)
+        _add_verification_notification(session, case, recipient=authority.subject,
+            notification_type="citizen_disputed_resolution",
+            payload={"complaint_reference": public_reference, "reason": decision.reason.strip()},
+            event=event, now=now)
+        action = "sent_to_senior_authority"
+        message = "Your dispute was sent to the assigned senior authority. The complaint remains open."
+        citizen_event = "citizen_disputed_resolution"
+
+    session.add(ComplaintEvent(
+        complaint_id=complaint.id,
+        event_type=citizen_event,
+        actor_subject=actor.subject,
+        previous_state=previous_status,
+        resulting_state=complaint.status,
+        correlation_id=getattr(request.state, "correlation_id", None),
+        visibility="citizen",
+        occurred_at=now,
+    ))
+    if decision.decision == "confirm":
+        _add_verification_notification(session, case, recipient=complaint.owner_subject,
+            notification_type="complaint_closed_after_citizen_confirmation",
+            payload={"complaint_reference": public_reference, "status": "closed"}, event=event, now=now)
+    session.commit()
+    return VerificationDecisionRead(
+        public_reference=public_reference,
+        work_status=case.work_status,
+        verification_status=case.verification_status,
+        action=action,
+        message=message,
+    )
+
+
+def _apply_authority_verification_decision(
+    request: Request,
+    public_reference: str,
+    decision: VerificationAuthorityDecision,
+    session: Session,
+    actor: Actor,
+    *,
+    independent_reviewer: bool,
+) -> VerificationDecisionRead:
+    case, complaint = _locked_complaint_case(session, public_reference)
+    if case is None:
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Verification case was not found."})
+    if independent_reviewer:
+        if case.independent_reviewer_subject != actor.subject or case.verification_status != "review_required":
+            raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Assigned verification review was not found."})
+        event_type = "INDEPENDENT_REVIEWER_VERIFICATION_DECIDED"
+        actor_label = "independent_reviewer"
+    else:
+        if case.senior_authority_subject != actor.subject or case.verification_status != "disputed":
+            raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Assigned senior-authority dispute was not found."})
+        event_type = "SENIOR_AUTHORITY_VERIFICATION_DECIDED"
+        actor_label = "senior_authority"
+
+    now = datetime.now(timezone.utc)
+    previous_status = complaint.status
+    event = _add_verification_event(session, case, event_type, {
+        "outcome": decision.outcome,
+        "reason": decision.reason.strip(),
+        "decided_by": actor.subject,
+        "decision_role": actor_label,
+        "resolution_evidence_ref": case.resolution_evidence_ref,
+        "decided_at": now.isoformat(),
+    }, now)
+
+    if decision.outcome == "confirm_completed":
+        case.verification_status = "approved"
+        case.work_status = "closed"
+        complaint.status = "closed"
+        action = "closed"
+        citizen_event = "verification_review_confirmed_completion"
+        message = "The work was confirmed as complete and the complaint is closed."
+        notification_type = "verification_review_closed_complaint"
+    else:
+        case.work_status = "in_progress"
+        case.verification_status = "not_started"
+        case.verification_deadline_at = None
+        case.resolution_evidence_ref = None
+        case.verification_routed_at = None
+        case.independent_reviewer_subject = None
+        case.work_completed_at = None
+        complaint.status = "in_progress"
+        action = "returned_to_officer"
+        citizen_event = "verification_review_returned_work_for_rework"
+        message = "The work was returned to the assigned officer for further action. The complaint remains open."
+        notification_type = "verification_work_returned_to_officer"
+
+    session.add(ComplaintEvent(
+        complaint_id=complaint.id,
+        event_type=citizen_event,
+        actor_subject=actor.subject,
+        previous_state=previous_status,
+        resulting_state=complaint.status,
+        correlation_id=getattr(request.state, "correlation_id", None),
+        visibility="citizen",
+        occurred_at=now,
+    ))
+    _add_verification_notification(session, case, recipient=complaint.owner_subject,
+        notification_type="verification_decision_recorded",
+        payload={"complaint_reference": public_reference, "outcome": decision.outcome, "status": complaint.status},
+        event=event, now=now)
+    if decision.outcome == "return_for_work":
+        _add_verification_notification(session, case, recipient=case.assigned_officer_subject,
+            notification_type=notification_type,
+            payload={"complaint_reference": public_reference, "reason": decision.reason.strip()},
+            event=event, now=now)
+        if independent_reviewer and case.senior_authority_subject:
+            _add_verification_notification(session, case, recipient=case.senior_authority_subject,
+                notification_type="independent_review_found_work_incomplete",
+                payload={"complaint_reference": public_reference, "reason": decision.reason.strip()},
+                event=event, now=now)
+    session.commit()
+    return VerificationDecisionRead(
+        public_reference=public_reference,
+        work_status=case.work_status,
+        verification_status=case.verification_status,
+        action=action,
+        message=message,
+    )
+
+
+def _late_citizen_responses(session: Session, case: MonitoringCase) -> list[dict]:
+    events = session.scalars(
+        select(MonitoringEvent)
+        .where(
+            MonitoringEvent.monitoring_case_id == case.id,
+            MonitoringEvent.event_type == "CITIZEN_LATE_VERIFICATION_RESPONSE",
+        )
+        .order_by(MonitoringEvent.occurred_at, MonitoringEvent.id)
+    )
+    return [event.data for event in events]
+
+
+def _citizen_dispute_reason(session: Session, case: MonitoringCase) -> str | None:
+    event = session.scalar(
+        select(MonitoringEvent)
+        .where(
+            MonitoringEvent.monitoring_case_id == case.id,
+            MonitoringEvent.event_type == "CITIZEN_VERIFICATION_DISPUTED",
+        )
+        .order_by(MonitoringEvent.occurred_at.desc(), MonitoringEvent.id.desc())
+        .limit(1)
+    )
+    return event.data.get("reason") if event is not None else None
+
+
+def _verification_context(session: Session, complaint: Complaint, case: MonitoringCase) -> VerificationReviewContextRead:
+    proof_path = (
+        f"/api/v1/staff/complaints/{case.complaint_reference}/verification-proof"
+        if case.verification_status == "disputed"
+        else f"/api/v1/staff/verification-reviews/{case.complaint_reference}/proof"
+    )
+    return VerificationReviewContextRead(
+        public_reference=case.complaint_reference,
+        complaint_status=complaint.status,
+        description=complaint.description,
+        location_text=complaint.location_text,
+        work_status=case.work_status,
+        verification_status=case.verification_status,
+        verification_deadline_at=case.verification_deadline_at,
+        assigned_officer_subject=case.assigned_officer_subject,
+        resolution_proof_url=proof_path,
+        citizen_dispute_reason=_citizen_dispute_reason(session, case),
+        late_citizen_responses=_late_citizen_responses(session, case),
+    )
+
+
+@resolution_router.get("/{public_reference}/verification-review", response_model=VerificationReviewContextRead)
+def read_senior_authority_verification_case(
+    public_reference: str = Path(max_length=32),
+    session: Session = Depends(get_session),
+    actor: Actor = Depends(get_current_senior_verification_authority),
+) -> VerificationReviewContextRead:
+    case, complaint = _locked_complaint_case(session, public_reference)
+    if case is None or case.senior_authority_subject != actor.subject or case.verification_status != "disputed":
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Assigned senior-authority dispute was not found."})
+    return _verification_context(session, complaint, case)
+
+
+@verification_review_router.get("/{public_reference}", response_model=VerificationReviewContextRead)
+def read_independent_reviewer_case(
+    public_reference: str = Path(max_length=32),
+    session: Session = Depends(get_session),
+    actor: Actor = Depends(get_current_independent_verification_reviewer),
+) -> VerificationReviewContextRead:
+    case, complaint = _locked_complaint_case(session, public_reference)
+    if case is None or case.independent_reviewer_subject != actor.subject or case.verification_status != "review_required":
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Assigned verification review was not found."})
+    return _verification_context(session, complaint, case)
+
+
+@resolution_router.get("/{public_reference}/verification-proof")
+def read_senior_authority_proof(
+    public_reference: str = Path(max_length=32),
+    session: Session = Depends(get_session),
+    actor: Actor = Depends(get_current_senior_verification_authority),
+) -> Response:
+    case = session.scalar(
+        select(MonitoringCase)
+        .join(Complaint, Complaint.id == MonitoringCase.complaint_id)
+        .where(Complaint.public_reference == public_reference)
+    )
+    if case is None or case.senior_authority_subject != actor.subject or case.verification_status != "disputed":
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Assigned disputed proof was not found."})
+    return _read_resolution_proof(session, case)
+
+
+@resolution_router.post("/{public_reference}/verification-decision", response_model=VerificationDecisionRead)
+def decide_disputed_verification(
+    request: Request,
+    decision: VerificationAuthorityDecision,
+    public_reference: str = Path(max_length=32),
+    session: Session = Depends(get_session),
+    actor: Actor = Depends(get_current_senior_verification_authority),
+) -> VerificationDecisionRead:
+    """Assigned senior authority confirms proof or returns the work for rework."""
+    return _apply_authority_verification_decision(request, public_reference, decision, session, actor, independent_reviewer=False)
+
+
+@verification_review_router.post("/{public_reference}/decision", response_model=VerificationDecisionRead)
+def decide_overdue_verification(
+    request: Request,
+    decision: VerificationAuthorityDecision,
+    public_reference: str = Path(max_length=32),
+    session: Session = Depends(get_session),
+    actor: Actor = Depends(get_current_independent_verification_reviewer),
+) -> VerificationDecisionRead:
+    """Assigned independent reviewer decides whether proof demonstrates completion."""
+    return _apply_authority_verification_decision(request, public_reference, decision, session, actor, independent_reviewer=True)
+
+
 @verification_review_router.get("/{public_reference}/proof")
 def read_independent_reviewer_proof(
     public_reference: str = Path(max_length=32),
@@ -465,6 +862,72 @@ def _read_upload_bounded(upload: UploadFile) -> bytes:
         return bytes(content)
     finally:
         upload.file.close()
+
+
+@notifications_router.get("", response_model=NotificationPage)
+def read_notification_inbox(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=10_000),
+    unread_only: bool = Query(default=False),
+    session: Session = Depends(get_session),
+    actor: Actor = Depends(get_current_notification_recipient),
+) -> NotificationPage:
+    """Return only notification rows addressed to the authenticated subject."""
+    statement = select(MonitoringNotification).where(
+        MonitoringNotification.recipient_subject == actor.subject
+    )
+    if unread_only:
+        statement = statement.where(MonitoringNotification.read_at.is_(None))
+    rows = list(session.scalars(
+        statement.order_by(
+            MonitoringNotification.created_at.desc(),
+            MonitoringNotification.id.desc(),
+        ).offset(offset).limit(limit + 1)
+    ))
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    return NotificationPage(
+        items=[NotificationRead(
+            notification_id=str(row.id),
+            notification_type=row.notification_type,
+            payload=row.payload,
+            created_at=row.created_at,
+            read_at=row.read_at,
+        ) for row in rows],
+        limit=limit,
+        offset=offset,
+        next_offset=offset + limit if has_more else None,
+    )
+
+
+@notifications_router.patch("/{notification_id}/read", response_model=NotificationRead)
+def mark_notification_read(
+    notification_id: UUID,
+    session: Session = Depends(get_session),
+    actor: Actor = Depends(get_current_notification_recipient),
+) -> NotificationRead:
+    """Mark only the authenticated recipient's notification as read; repeat calls are safe."""
+    row = session.scalar(
+        select(MonitoringNotification)
+        .where(
+            MonitoringNotification.id == notification_id,
+            MonitoringNotification.recipient_subject == actor.subject,
+        )
+        .with_for_update()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Notification was not found."})
+    if row.read_at is None:
+        row.read_at = datetime.now(timezone.utc)
+        session.commit()
+        session.refresh(row)
+    return NotificationRead(
+        notification_id=str(row.id),
+        notification_type=row.notification_type,
+        payload=row.payload,
+        created_at=row.created_at,
+        read_at=row.read_at,
+    )
 
 
 @router.post("", response_model=ComplaintSubmissionRead, status_code=status.HTTP_201_CREATED)

@@ -139,3 +139,39 @@ def get_current_independent_verification_reviewer(
 ) -> Actor:
     return _get_current_staff_with_permission(credentials, settings, "complaint_verification:review")
 
+def get_current_senior_verification_authority(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    settings: Settings = Depends(get_settings),
+) -> Actor:
+    return _get_current_staff_with_permission(credentials, settings, "complaint_verification:senior_review")
+
+def get_current_notification_recipient(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    settings: Settings = Depends(get_settings),
+) -> Actor:
+    unauthorized = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail={"code": "authentication_required", "message": "A valid account token is required."},
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    if credentials is None:
+        raise unauthorized
+    try:
+        claims = jwt.decode(
+            credentials.credentials,
+            settings.jwt_secret.get_secret_value(),
+            algorithms=["HS256"],
+            issuer=settings.jwt_issuer,
+            audience=settings.jwt_audience,
+            options={"require": ["sub", "iss", "aud", "exp"]},
+        )
+    except InvalidTokenError:
+        raise unauthorized from None
+    subject = claims.get("sub")
+    role = claims.get("role")
+    if not isinstance(subject, str) or not subject.strip() or not isinstance(role, str):
+        raise unauthorized
+    if role != "citizen":
+        return _get_current_staff_with_permission(credentials, settings, "monitoring_notifications:read")
+    return Actor(subject=subject, role=role)
+

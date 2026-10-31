@@ -27,11 +27,17 @@ flowchart TD
     J -- Yes --> K[Keep complaint open; set pending citizen verification]
     K --> L[Create citizen notification record with protected proof link]
     L --> M{Citizen responds before verification deadline?}
-    M -- Confirms --> N[Decision endpoint not implemented; closure must follow verified decision]
-    M -- Disputes --> O[Dispute decision endpoint not implemented]
+    M -- Confirms --> N[Close complaint and record citizen confirmation]
+    M -- Disputes --> O[Assign senior authority in same department]
+    O --> O2{Senior authority outcome?}
+    O2 -- Confirms complete --> O3[Close complaint]
+    O2 -- Returns for work --> O4[Reopen work for assigned officer]
     M -- No response --> P[Record overdue event and assign independent reviewer]
     P --> Q[Create reviewer notification record with protected proof link]
-    Q --> R[Reviewer decision endpoint not implemented]
+    Q --> R{Reviewer outcome?}
+    R -- Confirms complete --> R1[Close complaint]
+    R -- Finds incomplete --> R2[Return work to assigned officer]
+    R -. Late citizen response is recorded for reviewer; it cannot close or cancel review .-> Q
 ```
 
 The worker runs on a configurable interval and examines indexed due rows. It is a deterministic service, not an LLM polling loop. Only the escalation reasoning step calls the LLM, and only after an `SLA_BREACHED` event exists.
@@ -44,14 +50,21 @@ The worker runs on a configurable interval and examines indexed due rows. It is 
 4. The citizen receives an in-app notification record and a protected proof URL.
 5. If no citizen response arrives by the configured verification deadline, the worker records `VERIFICATION_OVERDUE` and assigns an eligible independent reviewer from the same jurisdiction, with no department affiliation.
 
-The officer proof upload and protected proof reads are implemented. Citizen confirm/dispute actions and the reviewer decision endpoint are not yet implemented, so the final human decision and closure are not available. Notification records are persisted, but a user-facing inbox and email/SMS/WhatsApp delivery are not included.
+The officer proof upload and protected proof reads are implemented. Citizens can confirm completion or dispute it; disputes go to an assigned senior authority. If the citizen does not respond before the deadline, the worker assigns an independent reviewer. Both assigned decision-makers can confirm completion and close the case, or return the work to the officer. Late citizen responses after reviewer handoff are recorded for the reviewer and cannot auto-close or cancel the review. A recipient-scoped in-app notification API is implemented. A frontend inbox and email/SMS/WhatsApp delivery are not included.
 
 ### Officer proof API
 
 - `POST /api/v1/staff/complaints/{public_reference}/resolution-proof` accepts an image from the assigned officer with the `complaint:resolve` permission.
 - `GET /api/v1/complaints/{public_reference}/verification-proof` serves the proof only to the complaint owner.
 - `GET /api/v1/staff/verification-reviews/{public_reference}/proof` serves it only to the assigned independent reviewer after the case enters `review_required`; the token must include `complaint_verification:review`.
-- Upload stores a normalized private image and metadata, changes the complaint status to `resolved_pending_verification`, and does not close it. The deterministic worker starts the citizen verification window and records the citizen notification on its next scan.
+- `POST /api/v1/complaints/{public_reference}/verification-decision` accepts citizen `confirm` or `dispute`; disputes require a reason and are assigned to an eligible senior authority from the same department and jurisdiction.
+- `GET /api/v1/staff/complaints/{public_reference}/verification-review` returns dispute context to the assigned senior authority; `GET /api/v1/staff/complaints/{public_reference}/verification-proof` serves that authority the proof.
+- `POST /api/v1/staff/complaints/{public_reference}/verification-decision` lets the assigned senior authority confirm completion or return the work to the officer.
+- `GET /api/v1/staff/verification-reviews/{public_reference}` returns review context, including late citizen responses, only to the assigned independent reviewer.
+- `POST /api/v1/staff/verification-reviews/{public_reference}/decision` lets that reviewer confirm completion or return work to the officer.
+- `GET /api/v1/notifications?unread_only=true` lists only notifications addressed to the caller; staff require `monitoring_notifications:read`.
+- `PATCH /api/v1/notifications/{notification_id}/read` marks only the caller's notification as read.
+- Upload stores a normalized private image and metadata, changes the complaint status to `resolved_pending_verification`, and does not close it. The deterministic worker starts the citizen verification window and records the citizen notification on its next scan. Late responses after reviewer assignment are retained for the reviewer and cannot auto-close or cancel review.
 
 These routes require an existing `monitoring_cases` record. The Agent 2 assignment workflow is not wired to register it automatically.
 
@@ -90,7 +103,8 @@ Authority subject fields on `monitoring_cases` correspond to identity subjects b
 | Work | `pending_citizen_verification` | Proof is available and the citizen has a response window. This is not closed. |
 | Verification | `pending_citizen` | Waiting for citizen confirmation or dispute. |
 | Verification | `review_required` | No citizen response by the deadline; reviewer assignment is required. |
-| Verification | `approved` / `disputed` | Reserved states; decision endpoints are not implemented yet. |
+| Verification | `approved` | Citizen or assigned reviewer/authority confirmed completion; case is closed. |
+| Verification | `disputed` | Citizen dispute is awaiting the assigned senior authority. |
 
 ## 7. Run the database migration and worker
 
@@ -117,8 +131,8 @@ python -m backend.app.workers.monitoring_worker --once
 - The current verification window defaults to **168 elapsed hours (7 days)** and is configurable. Confirm the production policy and timezone/DST treatment before real use.
 - The configured authority directory must reflect the approved jurisdiction and department hierarchy. Reviewer independence must be enforced by trusted data and permissions.
 - Confirm image storage, malware scanning, retention, and model-provider data handling before production.
-- Implement citizen confirmation/dispute and reviewer decision endpoints, with audit history and permission checks, before enabling complaint closure.
-- Add a notification inbox or approved delivery adapter if users need to receive these records outside the application.
+- Build a frontend notification inbox or approved external delivery adapter if users need to receive notification records outside the API.
+- Connect Agent 2's validated routing and SLA assignment to automatic monitoring-case registration.
 - Multi-department parent/child tickets are outside the current one-monitoring-case-per-complaint schema.
 
 ## 9. Source locations

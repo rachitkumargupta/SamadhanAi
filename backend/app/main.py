@@ -11,6 +11,7 @@ from backend.app.routes import (
     resolution_router,
     staff_router,
     verification_review_router,
+    notifications_router,
 )
 from backend.app.agents.complaint_analyst import MAX_IMAGE_BYTES
 
@@ -34,6 +35,7 @@ app.include_router(staff_router)
 app.include_router(monitoring_router)
 app.include_router(resolution_router)
 app.include_router(verification_review_router)
+app.include_router(notifications_router)
 install_error_handlers(app)
 
 

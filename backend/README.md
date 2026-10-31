@@ -1,6 +1,6 @@
 # Backend (citizen intake/tracking and Complaint Analyst core)
 
-This is a partial implementation, not the target MVP. It supports authenticated image-first complaint intake, private local media persistence, durable asynchronous Complaint Analyst jobs/results, owner-scoped tracking, a capability-protected read-only Analyst review queue with image access, and a configurable provisional taxonomy/priority framework. Agent 3 also supports officer resolution-proof upload and protected proof viewing. Citizen confirmation/dispute and reviewer decisions, automatic SLA-case registration, production storage/scanning, and the remaining routing and staff workflows remain open.
+This is a partial implementation, not the target MVP. It supports authenticated image-first complaint intake, private local media persistence, durable asynchronous Complaint Analyst jobs/results, owner-scoped tracking, a capability-protected read-only Analyst review queue with image access, and a configurable provisional taxonomy/priority framework. Agent 3 supports officer resolution-proof upload, citizen confirmation/dispute, assigned senior-authority and independent-review decisions, protected proof viewing, and a recipient-scoped in-app notification API. Automatic SLA-case registration, frontend notification screens, external delivery, production storage/scanning, and the remaining routing and staff workflows remain open.
 
 ## Provisional choices
 
@@ -67,5 +67,12 @@ Run tests after installing `requirements-dev.txt` with `python -m unittest disco
 - The complaint status becomes `resolved_pending_verification`. It is **not closed**. The monitoring worker starts citizen verification and writes the citizen notification record on its next scan.
 - `GET /api/v1/complaints/{public_reference}/verification-proof` returns the image only to the complaint owner.
 - `GET /api/v1/staff/verification-reviews/{public_reference}/proof` returns it only to the assigned independent reviewer after the case enters `review_required`.
+- `POST /api/v1/complaints/{public_reference}/verification-decision` lets the complaint owner confirm or dispute before the deadline.
+- `GET /api/v1/staff/complaints/{public_reference}/verification-review` and `GET /api/v1/staff/complaints/{public_reference}/verification-proof` provide the assigned senior authority the dispute context and image.
+- `POST /api/v1/staff/complaints/{public_reference}/verification-decision` lets the assigned senior authority decide a citizen dispute.
+- `GET /api/v1/staff/verification-reviews/{public_reference}` provides the assigned reviewer the case context and recorded late citizen responses.
+- `POST /api/v1/staff/verification-reviews/{public_reference}/decision` lets the assigned independent reviewer decide a case handed off after citizen silence.
+- `GET /api/v1/notifications?unread_only=true` lists the caller's own notification records; staff require `monitoring_notifications:read`.
+- `PATCH /api/v1/notifications/{notification_id}/read` marks only the caller's notification as read.
 
-The routes require an existing `monitoring_cases` row and configured authorization claims. Agent 2 case registration is not connected automatically. Citizen confirm/dispute and reviewer decision endpoints are not included, so this flow does not close a complaint.
+The routes require an existing `monitoring_cases` row and configured authorization claims. Agent 2 case registration is not connected automatically. A citizen can confirm to close the case or dispute to route it to an assigned senior authority. If the citizen does not respond by the deadline, the monitoring worker assigns an independent reviewer. Either assigned decision-maker can confirm completion and close the case, or return it to the officer for more work. Late citizen responses after reviewer handoff are recorded for that reviewer and cannot auto-close or cancel the review.
