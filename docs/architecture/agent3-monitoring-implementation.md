@@ -44,7 +44,16 @@ The worker runs on a configurable interval and examines indexed due rows. It is 
 4. The citizen receives an in-app notification record and a protected proof URL.
 5. If no citizen response arrives by the configured verification deadline, the worker records `VERIFICATION_OVERDUE` and assigns an eligible independent reviewer from the same jurisdiction, with no department affiliation.
 
-**Current implementation limit:** citizen confirm/dispute actions and the reviewer decision endpoint are not yet implemented. Therefore the current code does not complete the final human decision or close the complaint based on a decision. A notification row is persisted; a user-facing notification inbox and email/SMS/WhatsApp delivery are not included.
+The officer proof upload and protected proof reads are implemented. Citizen confirm/dispute actions and the reviewer decision endpoint are not yet implemented, so the final human decision and closure are not available. Notification records are persisted, but a user-facing inbox and email/SMS/WhatsApp delivery are not included.
+
+### Officer proof API
+
+- `POST /api/v1/staff/complaints/{public_reference}/resolution-proof` accepts an image from the assigned officer with the `complaint:resolve` permission.
+- `GET /api/v1/complaints/{public_reference}/verification-proof` serves the proof only to the complaint owner.
+- `GET /api/v1/staff/verification-reviews/{public_reference}/proof` serves it only to the assigned independent reviewer after the case enters `review_required`; the token must include `complaint_verification:review`.
+- Upload stores a normalized private image and metadata, changes the complaint status to `resolved_pending_verification`, and does not close it. The deterministic worker starts the citizen verification window and records the citizen notification on its next scan.
+
+These routes require an existing `monitoring_cases` record. The Agent 2 assignment workflow is not wired to register it automatically.
 
 ## 4. What happens when an SLA is breached
 

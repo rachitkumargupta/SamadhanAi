@@ -87,3 +87,12 @@ class ComplaintAnalysisReviewPage(BaseModel):
     limit: int
     offset: int
     next_offset: int | None
+
+
+class ResolutionProofSubmissionRead(BaseModel):
+    public_reference: str
+    complaint_status: str
+    work_status: str
+    verification_status: str
+    verification_deadline_at: datetime
+    citizen_proof_url: str
