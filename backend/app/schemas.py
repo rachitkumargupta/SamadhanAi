@@ -131,3 +131,18 @@ class VerificationReviewContextRead(BaseModel):
     resolution_proof_url: str
     citizen_dispute_reason: str | None = None
     late_citizen_responses: list[dict] = Field(default_factory=list)
+
+
+class NotificationRead(BaseModel):
+    notification_id: str
+    notification_type: str
+    payload: dict
+    created_at: datetime
+    read_at: datetime | None = None
+
+
+class NotificationPage(BaseModel):
+    items: list[NotificationRead]
+    limit: int
+    offset: int
+    next_offset: int | None

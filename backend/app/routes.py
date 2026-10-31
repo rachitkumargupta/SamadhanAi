@@ -21,6 +21,8 @@ from backend.app.schemas import (
     VerificationAuthorityDecision,
     VerificationDecisionRead,
     VerificationReviewContextRead,
+    NotificationRead,
+    NotificationPage,
 )
 from backend.app.agents.complaint_analyst import (
     MAX_IMAGE_BYTES,
@@ -34,6 +36,7 @@ from backend.app.security import (
     get_current_resolution_officer,
     get_current_independent_verification_reviewer,
     get_current_senior_verification_authority,
+    get_current_notification_recipient,
 )
 from backend.app.agents.monitoring_escalation import (
     AuthorityCandidate,
@@ -71,6 +74,7 @@ staff_router = APIRouter(prefix="/api/v1/staff/complaint-analysis", tags=["compl
 monitoring_router = APIRouter(prefix="/api/v1/staff/monitoring", tags=["monitoring"])
 resolution_router = APIRouter(prefix="/api/v1/staff/complaints", tags=["resolution-proof"])
 verification_review_router = APIRouter(prefix="/api/v1/staff/verification-reviews", tags=["verification-review"])
+notifications_router = APIRouter(prefix="/api/v1/notifications", tags=["notifications"])
 
 
 @monitoring_router.post("/escalation-jobs/{job_id}")
@@ -858,6 +862,72 @@ def _read_upload_bounded(upload: UploadFile) -> bytes:
         return bytes(content)
     finally:
         upload.file.close()
+
+
+@notifications_router.get("", response_model=NotificationPage)
+def read_notification_inbox(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=10_000),
+    unread_only: bool = Query(default=False),
+    session: Session = Depends(get_session),
+    actor: Actor = Depends(get_current_notification_recipient),
+) -> NotificationPage:
+    """Return only notification rows addressed to the authenticated subject."""
+    statement = select(MonitoringNotification).where(
+        MonitoringNotification.recipient_subject == actor.subject
+    )
+    if unread_only:
+        statement = statement.where(MonitoringNotification.read_at.is_(None))
+    rows = list(session.scalars(
+        statement.order_by(
+            MonitoringNotification.created_at.desc(),
+            MonitoringNotification.id.desc(),
+        ).offset(offset).limit(limit + 1)
+    ))
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    return NotificationPage(
+        items=[NotificationRead(
+            notification_id=str(row.id),
+            notification_type=row.notification_type,
+            payload=row.payload,
+            created_at=row.created_at,
+            read_at=row.read_at,
+        ) for row in rows],
+        limit=limit,
+        offset=offset,
+        next_offset=offset + limit if has_more else None,
+    )
+
+
+@notifications_router.patch("/{notification_id}/read", response_model=NotificationRead)
+def mark_notification_read(
+    notification_id: UUID,
+    session: Session = Depends(get_session),
+    actor: Actor = Depends(get_current_notification_recipient),
+) -> NotificationRead:
+    """Mark only the authenticated recipient's notification as read; repeat calls are safe."""
+    row = session.scalar(
+        select(MonitoringNotification)
+        .where(
+            MonitoringNotification.id == notification_id,
+            MonitoringNotification.recipient_subject == actor.subject,
+        )
+        .with_for_update()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Notification was not found."})
+    if row.read_at is None:
+        row.read_at = datetime.now(timezone.utc)
+        session.commit()
+        session.refresh(row)
+    return NotificationRead(
+        notification_id=str(row.id),
+        notification_type=row.notification_type,
+        payload=row.payload,
+        created_at=row.created_at,
+        read_at=row.read_at,
+    )
 
 
 @router.post("", response_model=ComplaintSubmissionRead, status_code=status.HTTP_201_CREATED)
