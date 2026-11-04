@@ -417,6 +417,23 @@ def route_and_assign_complaint(
                 )
             )
 
+            # Agent 3 Handoff: Register monitoring case with Agent 3
+            try:
+                from backend.app.monitoring import register_monitoring_case
+                register_monitoring_case(
+                    session,
+                    complaint_id=complaint.id,
+                    complaint_reference=complaint.public_reference,
+                    jurisdiction_id=str(proposal.ward_code or proposal.ward_id or 'default'),
+                    department_id=str(proposal.department_code or proposal.department_id or 'default'),
+                    assigned_officer_subject=officer.user_subject if officer else 'unknown_officer',
+                    sla_policy_id=f'sla:{proposal.category}:{proposal.priority}',
+                    sla_policy_version='1.0-provisional',
+                    sla_deadline_at=proposal.sla_deadline,
+                )
+            except Exception:
+                pass
+
             # Agent 3 Handoff: Enqueue SLA monitoring background job
             monitoring_job = BackgroundJob(
                 complaint_id=complaint.id,
