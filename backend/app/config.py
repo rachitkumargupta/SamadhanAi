@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     complaint_analyst_policy_file: str | None = None
     complaint_media_storage_dir: str = "./private_media"
     complaint_analysis_worker_poll_seconds: float = Field(default=2.0, gt=0, le=60)
+    complaint_routing_policy_file: str | None = None
+    complaint_routing_worker_poll_seconds: float = Field(default=2.0, gt=0, le=60)
 
     model_config = SettingsConfigDict(
         env_file=".env",

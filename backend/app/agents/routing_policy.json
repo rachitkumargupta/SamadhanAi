@@ -1,0 +1,22 @@
+{
+  "policy_id": "samadhan_resolution_routing_mvp",
+  "version": "1.0-provisional",
+  "approval_status": "provisional_engineering_default_not_municipal_policy",
+  "notice": "These configurations are provisional engineering defaults for development and demo purposes, not official government SLAs or department structures.",
+  "category_department_mapping": {
+    "roads_potholes": "PWD",
+    "garbage_sanitation": "SANITATION",
+    "drainage_sewage": "DRAINAGE",
+    "water_leakage": "WATER_SUPPLY",
+    "streetlights_electrical": "ELECTRICITY",
+    "damaged_public_infrastructure": "PWD"
+  },
+  "default_sla_hours": {
+    "critical": 12,
+    "high": 24,
+    "medium": 48,
+    "low": 72
+  },
+  "default_fallback_sla_hours": 48,
+  "required_officer_permission": "complaint:resolve"
+}

@@ -63,6 +63,9 @@ TRANSITION_RULES: dict[tuple[ComplaintState, ComplaintState], TransitionRule] = 
     (ComplaintState.SUBMITTED, ComplaintState.UNDER_REVIEW): TransitionRule(
         allowed_roles=frozenset({"officer", "supervisor"})
     ),
+    (ComplaintState.SUBMITTED, ComplaintState.ASSIGNED): TransitionRule(
+        allowed_roles=frozenset({"supervisor", "system"})
+    ),
     (ComplaintState.UNDER_REVIEW, ComplaintState.NEEDS_INFORMATION): TransitionRule(
         allowed_roles=frozenset({"officer", "supervisor"}), requires_reason=True
     ),

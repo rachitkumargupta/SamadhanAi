@@ -3,8 +3,10 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -41,6 +43,7 @@ class Complaint(Base):
         back_populates="complaint"
     )
     media: Mapped[list["ComplaintMedia"]] = relationship(back_populates="complaint")
+    assignments: Mapped[list["ComplaintAssignment"]] = relationship(back_populates="complaint")
 
 
 class ComplaintMedia(Base):
@@ -85,8 +88,8 @@ class BackgroundJob(Base):
     complaint_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("complaints.id", ondelete="RESTRICT"), nullable=False
     )
-    media_id: Mapped[UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("complaint_media.id", ondelete="RESTRICT"), nullable=False
+    media_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("complaint_media.id", ondelete="RESTRICT"), nullable=True
     )
     work_type: Mapped[str] = mapped_column(String(80), nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
@@ -186,3 +189,114 @@ class ComplaintEvent(Base):
     )
 
     complaint: Mapped[Complaint] = relationship(back_populates="events")
+
+
+class Department(Base):
+    __tablename__ = "departments"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+
+class Ward(Base):
+    __tablename__ = "wards"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    min_lat: Mapped[float] = mapped_column(Float, nullable=False)
+    max_lat: Mapped[float] = mapped_column(Float, nullable=False)
+    min_lon: Mapped[float] = mapped_column(Float, nullable=False)
+    max_lon: Mapped[float] = mapped_column(Float, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+
+class Officer(Base):
+    __tablename__ = "officers"
+    __table_args__ = (
+        Index("ix_officers_dept_ward_active", "department_id", "ward_id", "is_active"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    user_subject: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    role: Mapped[str] = mapped_column(String(50), nullable=False, default="officer")
+    permissions: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    department_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("departments.id", ondelete="RESTRICT"), nullable=False
+    )
+    ward_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("wards.id", ondelete="RESTRICT"), nullable=False
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    active_complaints_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+    department: Mapped[Department] = relationship()
+    ward: Mapped[Ward] = relationship()
+
+
+class SLAPolicy(Base):
+    __tablename__ = "sla_policies"
+    __table_args__ = (
+        UniqueConstraint("category", "priority", name="uq_sla_category_priority"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    category: Mapped[str] = mapped_column(String(64), nullable=False)
+    priority: Mapped[str] = mapped_column(String(24), nullable=False)
+    duration_hours: Mapped[int] = mapped_column(Integer, nullable=False)
+    description: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+
+class ComplaintAssignment(Base):
+    __tablename__ = "complaint_assignments"
+    __table_args__ = (
+        Index("ix_complaint_assignments_complaint", "complaint_id"),
+        Index("ix_complaint_assignments_officer", "assigned_officer_id"),
+        Index("ix_complaint_assignments_status", "status"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    complaint_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("complaints.id", ondelete="RESTRICT"), nullable=False
+    )
+    department_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("departments.id", ondelete="RESTRICT"), nullable=True
+    )
+    ward_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("wards.id", ondelete="RESTRICT"), nullable=True
+    )
+    assigned_officer_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("officers.id", ondelete="RESTRICT"), nullable=True
+    )
+    category: Mapped[str] = mapped_column(String(64), nullable=False)
+    priority: Mapped[str] = mapped_column(String(24), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False)
+    sla_hours: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sla_deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    routing_reason: Mapped[str] = mapped_column(Text, nullable=False)
+    assigned_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+    complaint: Mapped[Complaint] = relationship(back_populates="assignments")
+    department: Mapped[Department | None] = relationship()
+    ward: Mapped[Ward | None] = relationship()
+    assigned_officer: Mapped[Officer | None] = relationship()

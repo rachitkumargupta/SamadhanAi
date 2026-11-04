@@ -6,6 +6,7 @@ from backend.app.schemas import (
     ComplaintAnalysisStatusRead,
     ComplaintAnalysisReviewItem,
     ComplaintAnalysisReviewPage,
+    ComplaintAssignmentRead,
     ComplaintEventPage,
     ComplaintEventRead,
     ComplaintListPage,
@@ -17,16 +18,23 @@ from backend.app.agents.complaint_analyst import (
     AnalystInputError,
     normalize_image,
 )
-from backend.app.security import Actor, get_current_analyst_reviewer, get_current_citizen
+from backend.app.security import (
+    Actor,
+    get_current_analyst_reviewer,
+    get_current_citizen,
+    get_current_routing_staff,
+)
 from backend.app.storage import PrivateLocalMediaStore
 from backend.app.services import (
     get_complaint_analysis,
+    get_complaint_assignment_by_reference,
     get_complaint_media,
     get_owned_complaint,
     list_citizen_visible_events,
     list_analysis_review_items,
     list_owned_complaints,
     media_object_is_referenced,
+    route_and_assign_complaint,
     submit_complaint_with_image,
 )
 from backend.app.config import get_settings
@@ -286,3 +294,72 @@ def read_complaint_events(
         offset=offset,
         next_offset=offset + limit if has_more else None,
     )
+
+
+routing_router = APIRouter(prefix="/api/v1/staff/complaint-routing", tags=["complaint-routing"])
+
+
+def _to_assignment_read(complaint, assignment) -> ComplaintAssignmentRead:
+    return ComplaintAssignmentRead(
+        id=str(assignment.id),
+        complaint_reference=complaint.public_reference,
+        department_name=assignment.department.name if assignment.department else None,
+        department_code=assignment.department.code if assignment.department else None,
+        ward_name=assignment.ward.name if assignment.ward else None,
+        ward_code=assignment.ward.code if assignment.ward else None,
+        assigned_officer_id=str(assignment.assigned_officer_id) if assignment.assigned_officer_id else None,
+        officer_name=assignment.assigned_officer.name if assignment.assigned_officer else None,
+        category=assignment.category,
+        priority=assignment.priority,
+        status=assignment.status,
+        sla_hours=assignment.sla_hours,
+        sla_deadline=assignment.sla_deadline,
+        routing_reason=assignment.routing_reason,
+        assigned_at=assignment.assigned_at,
+    )
+
+
+@routing_router.post("/{public_reference}", response_model=ComplaintAssignmentRead)
+def route_complaint_endpoint(
+    public_reference: str = Path(max_length=32),
+    request: Request = None,
+    session: Session = Depends(get_session),
+    actor: Actor = Depends(get_current_routing_staff),
+) -> ComplaintAssignmentRead:
+    try:
+        correlation_id = getattr(request.state, "correlation_id", None) if request else None
+        assignment = route_and_assign_complaint(
+            session,
+            public_reference=public_reference,
+            actor_subject=actor.subject,
+            correlation_id=correlation_id,
+        )
+    except ValueError as exc:
+        msg = str(exc)
+        if "not found" in msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "not_found", "message": "Complaint was not found."},
+            ) from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "routing_precondition_failed", "message": msg},
+        ) from exc
+
+    complaint, _ = get_complaint_assignment_by_reference(session, public_reference=public_reference)
+    return _to_assignment_read(complaint, assignment)
+
+
+@routing_router.get("/{public_reference}", response_model=ComplaintAssignmentRead)
+def get_complaint_assignment_endpoint(
+    public_reference: str = Path(max_length=32),
+    session: Session = Depends(get_session),
+    actor: Actor = Depends(get_current_routing_staff),
+) -> ComplaintAssignmentRead:
+    complaint, assignment = get_complaint_assignment_by_reference(session, public_reference=public_reference)
+    if complaint is None or assignment is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Complaint assignment was not found."},
+        )
+    return _to_assignment_read(complaint, assignment)

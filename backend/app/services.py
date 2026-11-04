@@ -14,8 +14,18 @@ from backend.app.models import (
     BackgroundJob,
     Complaint,
     ComplaintAnalysis,
+    ComplaintAssignment,
     ComplaintEvent,
     ComplaintMedia,
+    Department,
+    Officer,
+    SLAPolicy,
+    Ward,
+)
+from backend.app.agents.resolution_router import (
+    ResolutionRouter,
+    RoutingInput,
+    RoutingProposal,
 )
 from backend.app.schemas import ComplaintCreate
 
@@ -274,3 +284,184 @@ def transition_complaint(
         session.rollback()
         raise
     return complaint
+
+
+def get_complaint_assignment(
+    session: Session, *, complaint_id: UUID
+) -> ComplaintAssignment | None:
+    """Retrieve the active or latest assignment for a complaint."""
+    statement = (
+        select(ComplaintAssignment)
+        .where(ComplaintAssignment.complaint_id == complaint_id)
+        .order_by(ComplaintAssignment.assigned_at.desc())
+    )
+    return session.scalars(statement).first()
+
+
+def get_complaint_assignment_by_reference(
+    session: Session, *, public_reference: str
+) -> tuple[Complaint | None, ComplaintAssignment | None]:
+    """Retrieve a complaint and its assignment by public reference."""
+    complaint = session.scalar(
+        select(Complaint).where(Complaint.public_reference == public_reference)
+    )
+    if complaint is None:
+        return None, None
+    assignment = get_complaint_assignment(session, complaint_id=complaint.id)
+    return complaint, assignment
+
+
+def route_and_assign_complaint(
+    session: Session,
+    *,
+    public_reference: str,
+    actor_subject: str,
+    correlation_id: str | None = None,
+    router: ResolutionRouter | None = None,
+) -> ComplaintAssignment:
+    """Execute Agent 2 Resolution & Routing workflow for an analyzed complaint.
+
+    Requirements:
+    1. Reuses persisted Agent 1 output; never re-analyzes images.
+    2. Validates category, priority, coordinates, department, ward, and officer eligibility.
+    3. If human review is required, marks assignment as needs_review without auto-dispatching.
+    4. Deterministic SLA calculation.
+    5. Handoff to Agent 3: schedules durable monitoring job on successful assignment.
+    6. Strict idempotency: returns existing assignment if already routed.
+    """
+    complaint = session.scalar(
+        select(Complaint)
+        .where(Complaint.public_reference == public_reference)
+        .with_for_update()
+    )
+    if complaint is None:
+        raise ValueError("Complaint not found.")
+
+    # Idempotency check: if assignment already exists, return it directly
+    existing_assignment = get_complaint_assignment(session, complaint_id=complaint.id)
+    if existing_assignment is not None:
+        return existing_assignment
+
+    # Retrieve Agent 1 analysis result
+    _, analysis = get_complaint_analysis(session, complaint_id=complaint.id)
+    if analysis is None or not analysis.result:
+        raise ValueError("Complaint analysis by Agent 1 is required before routing.")
+
+    result = analysis.result
+    category = result.get("category") or "other_uncertain"
+    priority = result.get("priority_recommendation") or "medium"
+    confidence = result.get("confidence_level") or "low"
+    human_review = bool(result.get("human_review_recommended", False))
+    outcome = result.get("outcome") or "completed"
+
+    # Query active reference data
+    departments = list(session.scalars(select(Department).where(Department.is_active.is_(True))).all())
+    wards = list(session.scalars(select(Ward).where(Ward.is_active.is_(True))).all())
+    officers = list(session.scalars(select(Officer).where(Officer.is_active.is_(True))).all())
+    sla_policies = list(session.scalars(select(SLAPolicy).where(SLAPolicy.is_active.is_(True))).all())
+
+    active_router = router or ResolutionRouter()
+    routing_input = RoutingInput(
+        complaint_id=complaint.id,
+        category=category,
+        priority=priority,
+        confidence_level=confidence,
+        human_review_recommended=human_review,
+        location_text=complaint.location_text,
+        analysis_outcome=outcome,
+    )
+
+    proposal = active_router.route(
+        routing_input,
+        departments=departments,
+        wards=wards,
+        officers=officers,
+        sla_policies=sla_policies,
+    )
+
+    try:
+        assignment = ComplaintAssignment(
+            complaint_id=complaint.id,
+            department_id=proposal.department_id,
+            ward_id=proposal.ward_id,
+            assigned_officer_id=proposal.assigned_officer_id,
+            category=proposal.category,
+            priority=proposal.priority,
+            status=proposal.status,
+            sla_hours=proposal.sla_hours,
+            sla_deadline=proposal.sla_deadline,
+            routing_reason=proposal.routing_reason,
+        )
+        session.add(assignment)
+        session.flush()
+
+        previous_state = complaint.status
+
+        if proposal.status == "assigned":
+            # Successful assignment to officer
+            officer = session.get(Officer, proposal.assigned_officer_id)
+            if officer is not None:
+                officer.active_complaints_count += 1
+
+            complaint.status = ComplaintState.ASSIGNED.value
+            session.add(
+                ComplaintEvent(
+                    complaint_id=complaint.id,
+                    event_type="complaint_assigned",
+                    actor_subject=actor_subject,
+                    previous_state=previous_state,
+                    resulting_state=ComplaintState.ASSIGNED.value,
+                    reason=proposal.routing_reason,
+                    correlation_id=correlation_id,
+                    visibility="citizen",
+                )
+            )
+
+            # Agent 3 Handoff: Enqueue SLA monitoring background job
+            monitoring_job = BackgroundJob(
+                complaint_id=complaint.id,
+                media_id=None,
+                work_type="sla_monitoring",
+                idempotency_key=f"sla_monitoring:{complaint.id}",
+                status="pending",
+                max_attempts=3,
+            )
+            session.add(monitoring_job)
+
+        elif proposal.status == "needs_review":
+            complaint.status = ComplaintState.UNDER_REVIEW.value
+            session.add(
+                ComplaintEvent(
+                    complaint_id=complaint.id,
+                    event_type="routing_review_required",
+                    actor_subject=actor_subject,
+                    previous_state=previous_state,
+                    resulting_state=ComplaintState.UNDER_REVIEW.value,
+                    reason=proposal.routing_reason,
+                    correlation_id=correlation_id,
+                    visibility="internal",
+                )
+            )
+
+        elif proposal.status == "unassigned":
+            complaint.status = ComplaintState.UNDER_REVIEW.value
+            session.add(
+                ComplaintEvent(
+                    complaint_id=complaint.id,
+                    event_type="routing_officer_unavailable",
+                    actor_subject=actor_subject,
+                    previous_state=previous_state,
+                    resulting_state=ComplaintState.UNDER_REVIEW.value,
+                    reason=proposal.routing_reason,
+                    correlation_id=correlation_id,
+                    visibility="internal",
+                )
+            )
+
+        session.commit()
+        session.refresh(assignment)
+        session.refresh(complaint)
+        return assignment
+    except Exception:
+        session.rollback()
+        raise

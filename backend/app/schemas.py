@@ -87,3 +87,23 @@ class ComplaintAnalysisReviewPage(BaseModel):
     limit: int
     offset: int
     next_offset: int | None
+
+
+class ComplaintAssignmentRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    complaint_reference: str
+    department_name: str | None = None
+    department_code: str | None = None
+    ward_name: str | None = None
+    ward_code: str | None = None
+    assigned_officer_id: str | None = None
+    officer_name: str | None = None
+    category: str
+    priority: str
+    status: str
+    sla_hours: int | None = None
+    sla_deadline: datetime | None = None
+    routing_reason: str
+    assigned_at: datetime

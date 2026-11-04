@@ -89,3 +89,46 @@ def get_current_analyst_reviewer(
             detail={"code": "review_permission_required", "message": "Complaint analysis review access is required."},
         )
     return Actor(subject=subject, role=role if isinstance(role, str) else "staff")
+
+
+def get_current_routing_staff(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    settings: Settings = Depends(get_settings),
+) -> Actor:
+    """Require an explicit routing/assignment capability from the trusted JWT issuer."""
+    unauthorized = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail={"code": "authentication_required", "message": "A valid staff token is required."},
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    if credentials is None:
+        raise unauthorized
+
+    try:
+        claims = jwt.decode(
+            credentials.credentials,
+            settings.jwt_secret.get_secret_value(),
+            algorithms=["HS256"],
+            issuer=settings.jwt_issuer,
+            audience=settings.jwt_audience,
+            options={"require": ["sub", "iss", "aud", "exp"]},
+        )
+    except InvalidTokenError:
+        raise unauthorized from None
+
+    subject = claims.get("sub")
+    role = claims.get("role")
+    permissions = claims.get("permissions", [])
+    if not isinstance(subject, str) or not subject.strip() or role == "citizen":
+        raise unauthorized
+    # Allow staff with complaint_routing:assign or complaint_analysis:review or supervisor role
+    is_authorized = (
+        (isinstance(permissions, list) and ("complaint_routing:assign" in permissions or "complaint_analysis:review" in permissions))
+        or role in ("supervisor", "admin")
+    )
+    if not is_authorized:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "routing_permission_required", "message": "Complaint routing access is required."},
+        )
+    return Actor(subject=subject, role=role if isinstance(role, str) else "staff")

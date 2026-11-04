@@ -58,4 +58,17 @@ The callable core in `backend/app/agents/complaint_analyst.py` returns a typed p
 
 Configure `OPENAI_API_KEY`, `COMPLAINT_ANALYST_MODEL`, `COMPLAINT_ANALYST_TIMEOUT_SECONDS`, optional `COMPLAINT_ANALYST_POLICY_FILE` / `COMPLAINT_ANALYST_CATEGORIES`, `COMPLAINT_MEDIA_STORAGE_DIR`, and `COMPLAINT_ANALYSIS_WORKER_POLL_SECONDS`. The default versioned policy lives at `backend/app/agents/analysis_policy.json` and is explicitly a provisional engineering baseline, not municipal policy. The OpenAI adapter is the current development adapter; the project has not approved a production provider, model, or data-handling agreement. Missing credentials fail the job into manual review; results are never fabricated. See the [MVP analysis framework](../docs/architecture/complaint-analysis-mvp-policy.md) and [integration contract](../docs/architecture/complaint-analyst-integration.md).
 
+## Resolution and Routing Agent (Agent 2) workflow
+
+Agent 2 (`backend/app/agents/resolution_router.py`) maps the validated Agent 1 proposal to an operational destination:
+- **Department**: Configurable category-to-department mapping (`backend/app/agents/routing_policy.json`).
+- **Ward**: Deterministic GPS coordinate parsing and ward boundary lookup.
+- **Officer**: Deterministic eligibility filtering (active, matching dept and ward, permission) and least-active-workload selection.
+- **SLA**: Configurable deterministic calculation stored with duration and deadline.
+- **Agent 3 Handoff**: Automatically schedules durable background monitoring job upon assignment.
+- **Staff Endpoints**: `POST /api/v1/staff/complaint-routing/{public_reference}` and `GET /api/v1/staff/complaint-routing/{public_reference}`.
+- **Routing Worker**: `python -m backend.app.workers.complaint_routing_worker`.
+See [Resolution & Routing Architecture](../docs/architecture/agent-2-resolution-routing.md).
+
+
 Run tests after installing `requirements-dev.txt` with `python -m unittest discover -s tests -v`.
