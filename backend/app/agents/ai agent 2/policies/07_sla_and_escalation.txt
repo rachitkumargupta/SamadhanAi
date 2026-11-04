@@ -1,0 +1,138 @@
+
+DOCUMENT_ID: DRAFT-SLA-001
+TITLE: Municipal Service Levels and Escalation Rules
+DOCUMENT_STATUS: DRAFT - NOT OFFICIAL MUNICIPAL POLICY
+JURISDICTION: Generic municipal prototype
+VERSION: 1.0
+
+PURPOSE
+
+Define how Samadhan AI Agent 2 handles service-level agreements (SLAs),
+completion timelines, and escalation recommendations during prototype
+testing.
+
+This document does not establish official response deadlines,
+statutory obligations, or municipal escalation procedures.
+
+DEFINITIONS
+
+ACKNOWLEDGEMENT TIME:
+The time allowed by an applicable policy to acknowledge a complaint.
+
+RESPONSE TIME:
+The time allowed by an applicable policy to begin responding to a complaint.
+
+RESOLUTION TIME:
+The time allowed by an applicable policy to resolve a complaint.
+
+ESCALATION:
+A recommendation to refer a complaint to an appropriate higher authority
+or designated process when applicable rules or conditions require it.
+
+These time categories are distinct. Do not treat them as interchangeable.
+
+SLA EVIDENCE REQUIREMENTS
+
+Before recommending an official SLA, identify:
+
+- The applicable policy or service charter.
+- The issuing authority.
+- The relevant service or complaint category.
+- The applicable deadline or time limit.
+- The conditions and exclusions, if specified.
+- The source document and supporting excerpt.
+
+Only use a deadline when the retrieved evidence supports its applicability
+to the specific complaint and jurisdiction.
+
+Do not invent a deadline, convert a severity level into an assumed
+deadline, or copy a deadline from an unrelated service category.
+
+MISSING OR INSUFFICIENT SLA EVIDENCE
+
+If no applicable official SLA is retrieved:
+
+- Set completion_timeline to null.
+- Explain that an applicable official deadline was not established.
+- Request human review when necessary.
+- Do not represent a prototype suggestion as an official deadline.
+
+An empty policy folder does not establish that a municipality has no SLA.
+It means the system currently lacks retrieved evidence.
+
+PRIORITY AND SEVERITY
+
+Severity and SLA are related but distinct.
+
+Severity describes the assessed seriousness of an issue.
+An SLA defines a time requirement under an applicable policy.
+
+Do not automatically assign a deadline based only on a severity label.
+
+If the complaint reports a potential immediate hazard, flag it for urgent
+human attention even when the official SLA is unavailable.
+
+This safety flag does not create an SLA or start a service-level clock.
+
+ESCALATION RECOMMENDATIONS
+
+Recommend escalation only when a verified policy or documented procedure
+supports the recommendation.
+
+When applicable escalation rules are unavailable:
+
+- Do not invent escalation levels or escalation contacts.
+- Do not claim that an escalation has occurred.
+- Do not assign an officer or send a notification.
+- Explain that the escalation procedure requires verification.
+
+HUMAN REVIEW CONDITIONS
+
+Human review is required or recommended when:
+
+- The relevant SLA cannot be established.
+- Retrieved documents conflict.
+- The complaint category does not match the policy.
+- The jurisdiction or responsible authority is uncertain.
+- The deadline's applicability is unclear.
+- A potential immediate hazard requires assessment by the appropriate
+  authority.
+
+AGENT 2 RESPONSIBILITIES
+
+Agent 2 may:
+- Retrieve relevant SLA documents.
+- Extract applicable time requirements.
+- Explain the evidence supporting an SLA recommendation.
+- Identify missing information.
+- Recommend human review.
+- Propose a policy-supported escalation.
+
+Agent 2 must not:
+- Create a ticket.
+- Assign an officer.
+- Start or stop an SLA clock.
+- Send an escalation or emergency notification.
+- Claim that an operational action has occurred.
+
+Those actions belong to the appropriate downstream system or authorized
+human process.
+
+AUDITABILITY
+
+Every official SLA recommendation should retain:
+- Policy identifier.
+- Source document.
+- Supporting excerpt.
+- Applicable complaint category.
+- Recommended deadline.
+- Any conditions affecting applicability.
+
+If the source cannot be verified, do not label the deadline official.
+
+DOCUMENT STATUS
+
+This document is project-authored draft guidance for prototype testing.
+It is not an official municipal service-level agreement.
+
+END OF DOCUMENT

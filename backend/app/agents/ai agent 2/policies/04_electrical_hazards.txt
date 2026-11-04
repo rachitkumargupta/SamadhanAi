@@ -1,0 +1,105 @@
+
+DOCUMENT_ID: DRAFT-ELECTRICAL-001
+TITLE: Electrical Hazards in Public Areas
+DOCUMENT_STATUS: DRAFT - NOT OFFICIAL MUNICIPAL POLICY
+JURISDICTION: Generic municipal prototype
+VERSION: 1.0
+
+PURPOSE
+
+Provide provisional guidance for identifying, prioritizing, and routing
+reports of electrical hazards in public areas.
+
+This document is a project-authored draft, not an official safety
+regulation or municipal service-level agreement.
+
+SCOPE
+
+- Exposed or hanging electrical wires.
+- Damaged electrical poles or street-lighting equipment.
+- Sparking electrical equipment.
+- Fallen electrical cables.
+- Water near potentially energized electrical equipment.
+
+HAZARD IDENTIFICATION
+
+Extract the reported hazard, location, and available details.
+
+Do not assume a wire is live or safe based solely on its appearance.
+Treat a report of an exposed wire as a potential hazard until the
+appropriate authority assesses it.
+
+URGENT ATTENTION FLAG
+
+If a complaint reports a potentially immediate electrical hazard:
+
+1. Flag the issue for urgent human attention.
+2. Explain the specific reported hazard.
+3. Preserve the original issue ID.
+4. Recommend contacting the appropriate emergency or electrical utility
+   authority through verified local channels.
+5. Do not invent contact numbers, dispatch actions, or response deadlines.
+6. Do not advise untrained people to touch, move, or repair equipment.
+
+PROVISIONAL SEVERITY GUIDANCE
+
+LOW:
+A non-functional street light with no other reported hazard may warrant
+a lower provisional severity, subject to the available facts.
+
+MEDIUM:
+A damaged public electrical fixture without a reported immediate hazard
+may require assessment according to the verified local rules.
+
+HIGH:
+A reported electrical fault that may expose people to danger or disrupt
+an important public service may warrant a high-severity recommendation.
+
+CRITICAL:
+A credible report of an immediate threat, such as a fallen cable in a
+public access area, may warrant a critical provisional recommendation
+when supported by the reported facts and applicable rules.
+
+These examples are not official municipal severity thresholds.
+When evidence is insufficient, use undetermined and request human review.
+
+DEPARTMENT AND AUTHORITY ROUTING
+
+Possible authorities may include an electricity distribution utility,
+a municipal street-lighting function, or another infrastructure owner.
+
+These are candidate categories, not confirmed assignments.
+
+Determine responsibility using verified jurisdiction records.
+If the responsible authority is unclear, leave the department assignment
+unresolved and request human review.
+
+MULTI-ISSUE COMPLAINTS
+
+If an exposed electrical wire is reported alongside a water leak:
+
+- Create or recommend separate child tasks where appropriate.
+- Assess the electrical hazard independently.
+- Flag the potential electrical hazard for urgent human attention.
+- Do not assume both issues belong to the same department.
+- Do not delay the safety flag while waiting for jurisdiction evidence.
+- Do not infer that an official SLA has started.
+
+SLA AND ESCALATION
+
+This draft defines no official response deadline or escalation procedure.
+
+Only provide an official deadline when a verified, applicable policy
+supports that value.
+
+If no applicable SLA is retrieved, set completion_timeline to null.
+
+EVIDENCE REQUIREMENTS
+
+Distinguish verified official policy from draft guidance and unverified
+complaint information.
+
+Never represent this document as an official electrical safety code,
+municipal regulation, or utility operating procedure.
+
+END OF DOCUMENT

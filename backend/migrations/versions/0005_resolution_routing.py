@@ -1,14 +1,14 @@
 """Persist departments, wards, officers, SLA policies, and complaint assignments.
 
-Revision ID: 0004_resolution_routing
-Revises: 0003_complaint_analysis_jobs
+Revision ID: 0005_resolution_routing
+Revises: 0004_agent3_monitoring
 """
 from alembic import op
 import sqlalchemy as sa
 
 
-revision = "0004_resolution_routing"
-down_revision = "0003_complaint_analysis_jobs"
+revision = "0005_resolution_routing"
+down_revision = "0004_agent3_monitoring"
 branch_labels = None
 depends_on = None
 

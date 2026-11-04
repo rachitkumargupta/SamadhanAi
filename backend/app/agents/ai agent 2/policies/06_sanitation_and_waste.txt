@@ -1,0 +1,111 @@
+
+DOCUMENT_ID: DRAFT-SANITATION-001
+TITLE: Municipal Sanitation and Solid Waste Complaints
+DOCUMENT_STATUS: DRAFT - NOT OFFICIAL MUNICIPAL POLICY
+JURISDICTION: Generic municipal prototype
+VERSION: 1.0
+
+PURPOSE
+
+Provide provisional guidance for classifying and routing complaints
+related to municipal sanitation and solid waste.
+
+This document is a project-authored draft. It does not establish
+official department responsibilities or response deadlines.
+
+SCOPE
+
+- Uncollected household or public-area waste.
+- Garbage accumulation.
+- Missed waste collection.
+- Public-area cleanliness concerns.
+- Overflowing waste bins.
+- Reported sanitation-related hazards.
+
+ISSUE IDENTIFICATION
+
+Identify the specific sanitation issue and preserve its original issue ID.
+
+Distinguish between routine waste collection, public-area cleaning,
+drainage blockage, sewage overflow, and other reported problems.
+
+Do not assume that all sanitation services are managed by one department.
+
+PROVISIONAL SEVERITY GUIDANCE
+
+LOW:
+A localized cleanliness concern with limited reported impact and no
+identified immediate safety concern.
+
+MEDIUM:
+Accumulated waste or missed collection causing noticeable inconvenience
+or affecting a public area.
+
+HIGH:
+Extensive waste accumulation, significant disruption, or a reported
+condition that may create a serious public-health or environmental concern.
+
+CRITICAL:
+Use only when available evidence supports an immediate or extreme threat
+under the applicable classification rules.
+
+These are provisional examples, not official municipal thresholds.
+If the available facts do not support classification, use undetermined
+and request human review.
+
+PUBLIC-HEALTH CONSIDERATIONS
+
+Consider the reported extent, location, duration, and potential exposure.
+
+Do not diagnose an illness, confirm contamination, or assert the presence
+of hazardous material without supporting evidence.
+
+If the complaint reports a potential immediate hazard, flag it for
+urgent human attention and explain the reported concern.
+
+DEPARTMENT AND JURISDICTION ROUTING
+
+Candidate service categories:
+- Solid waste management.
+- Sanitation.
+- Public-area cleaning.
+
+These are candidate categories, not verified assignments to a particular
+municipality or public authority.
+
+Verify the responsible authority through official municipal records.
+
+If jurisdiction is uncertain:
+- Leave the department assignment unresolved.
+- Explain the missing information.
+- Set requires_human_review to true.
+
+MULTI-ISSUE COMPLAINTS
+
+If a complaint reports accumulated garbage alongside a blocked drain,
+assess the sanitation and drainage issues independently.
+
+Create or recommend separate child tasks when appropriate.
+Preserve every supplied issue ID.
+
+SLA AND COMPLETION TIMELINES
+
+This draft defines no official collection schedule, cleanup deadline,
+completion timeline, or escalation procedure.
+
+Provide an official deadline only when supported by verified,
+applicable policy evidence.
+
+If no applicable SLA is available, set completion_timeline to null.
+
+EVIDENCE REQUIREMENTS
+
+Distinguish verified official policy from project-authored draft guidance
+and unverified complaint information.
+
+Do not present this document as an official municipal regulation.
+
+END OF DOCUMENT
+
+
+

@@ -1,0 +1,126 @@
+
+DOCUMENT_ID: DRAFT-ROADS-DRAINAGE-001
+TITLE: Municipal Roads, Potholes and Drainage Complaints
+DOCUMENT_STATUS: DRAFT - NOT OFFICIAL MUNICIPAL POLICY
+JURISDICTION: Generic municipal prototype
+VERSION: 1.0
+
+PURPOSE
+
+Provide provisional guidance for classifying and routing complaints
+related to roads, public infrastructure, drainage and waterlogging.
+
+This document is a project-authored draft and does not establish
+official municipal responsibilities or response deadlines.
+
+SCOPE
+
+- Potholes and damaged road surfaces.
+- Damaged public footpaths.
+- Blocked stormwater drains.
+- Localized waterlogging.
+- Damaged drainage infrastructure.
+- Road obstructions caused by infrastructure damage.
+
+ISSUE IDENTIFICATION
+
+Identify each distinct issue and preserve its original issue ID.
+
+Determine whether the complaint concerns road maintenance, stormwater
+drainage, sewerage, or another infrastructure service.
+
+Do not assume that all drains are managed by the same authority.
+
+PROVISIONAL SEVERITY GUIDANCE
+
+LOW:
+A minor infrastructure defect with limited reported impact and no
+identified immediate safety concern.
+
+MEDIUM:
+A localized pothole, blocked drain, or similar issue causing noticeable
+inconvenience or limited disruption.
+
+HIGH:
+Substantial road damage, extensive waterlogging, significant access
+disruption, or an infrastructure defect presenting a serious hazard.
+
+CRITICAL:
+Use only when the available facts support an immediate or extreme
+threat to people or another severe consequence under applicable rules.
+
+These classifications are provisional examples, not official municipal
+severity thresholds. If facts are insufficient, use undetermined and
+request human review.
+
+SAFETY CONSIDERATIONS
+
+Consider whether the reported issue creates:
+- A risk to pedestrians or road users.
+- Access problems for emergency services.
+- Significant flooding or waterlogging.
+- Possible infrastructure collapse or subsidence.
+- A secondary hazard, such as an exposed electrical wire.
+
+Flag potential immediate hazards for urgent human attention.
+
+Do not invent measurements, damage assessments, traffic conditions,
+or facts that are not present in the complaint or supporting evidence.
+
+DEPARTMENT AND JURISDICTION ROUTING
+
+Candidate service categories:
+- Road maintenance.
+- Stormwater drainage.
+- Sewerage.
+- Public infrastructure maintenance.
+
+These are candidate categories, not confirmed department assignments.
+
+Verify responsibility using municipality-specific official records.
+Road ownership and maintenance may depend on the road type and
+the relevant public authority.
+
+If jurisdiction is uncertain:
+- Leave the department assignment unresolved.
+- Explain the missing information.
+- Set requires_human_review to true.
+
+DRAINAGE AND WATERLOGGING
+
+For drainage complaints, assess:
+- Whether a blockage or overflow is reported.
+- The reported extent of waterlogging.
+- Whether access or public services are disrupted.
+- Whether a secondary safety hazard is reported.
+- Whether the issue concerns stormwater or sewage, if known.
+
+Do not infer contamination or a particular drainage-system failure
+without supporting information.
+
+MULTI-ISSUE COMPLAINTS
+
+If a damaged road and an exposed electrical wire are reported together,
+assess each issue independently.
+
+Create or recommend separate child tasks where appropriate.
+Preserve all supplied issue IDs and flag any potential immediate hazard.
+
+SLA AND COMPLETION TIMELINES
+
+This draft defines no official response deadlines, repair timelines,
+or escalation procedures.
+
+Provide an official completion timeline only when verified, applicable
+policy evidence supports it.
+
+If no applicable SLA is available, set completion_timeline to null.
+
+EVIDENCE REQUIREMENTS
+
+Distinguish verified official policy from project-authored draft guidance
+and unverified complaint information.
+
+Do not present this document as an official municipal regulation.
+
+END OF DOCUMENT
